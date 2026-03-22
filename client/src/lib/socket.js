@@ -9,11 +9,11 @@ export const getSocket = () => {
     socket = io(SOCKET_URL, {
       autoConnect: false,
       transports: ['polling'],
-      timeout: 30000,
+      timeout: 10000,        // match server pingTimeout
       reconnection: true,
       reconnectionAttempts: 10,
-      reconnectionDelay: 1500,
-      reconnectionDelayMax: 5000,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 3000,
     })
   }
   return socket
