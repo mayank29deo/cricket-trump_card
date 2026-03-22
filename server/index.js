@@ -7,20 +7,16 @@ const gameManager = require('./gameManager');
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = process.env.CLIENT_URL
-  ? [process.env.CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173']
-  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
-
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: true, // reflect request origin — works for all domains including mobile
     methods: ['GET', 'POST'],
     credentials: true
   }
 });
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: true,
   credentials: true
 }));
 app.use(express.json());
