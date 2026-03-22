@@ -145,12 +145,35 @@ export default function Lobby() {
     }
   }
 
+  const emitWithTimeout = (event, data, timeoutMs = 15000) => {
+    const s = getSocket()
+    // Force a fresh connection every time user clicks — avoids stale socket state on mobile
+    if (!s.connected) {
+      resetSocket()
+      const fresh = connectSocket()
+      fresh.once('connect', () => fresh.emit(event, data))
+    } else {
+      s.emit(event, data)
+    }
+    // Safety timeout — if no response in 15s, show error
+    const timer = setTimeout(() => {
+      if (isConnectingRef.current) {
+        setError('Server took too long to respond. Please try again.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+      }
+    }, timeoutMs)
+    // Clear timeout if room_created/room_joined fires (handled in useEffect listeners)
+    getSocket().once('room_created', () => clearTimeout(timer))
+    getSocket().once('room_joined', () => clearTimeout(timer))
+  }
+
   const handleCreateRoom = () => {
     if (!user) return
     setError('')
     isConnectingRef.current = true
     setIsConnecting(true)
-    safeEmit('create_room', {
+    emitWithTimeout('create_room', {
       player: { id: user.id, name: user.name },
       timeOption
     })
@@ -165,7 +188,7 @@ export default function Lobby() {
     setError('')
     isConnectingRef.current = true
     setIsConnecting(true)
-    safeEmit('join_room', {
+    emitWithTimeout('join_room', {
       roomCode: code,
       player: { id: user.id, name: user.name }
     })
@@ -177,7 +200,7 @@ export default function Lobby() {
     setError('')
     isConnectingRef.current = true
     setIsConnecting(true)
-    safeEmit('join_room', {
+    emitWithTimeout('join_room', {
       roomCode: code,
       player: { id: user.id, name: user.name }
     })
