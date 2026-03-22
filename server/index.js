@@ -9,16 +9,12 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: true, // reflect request origin — works for all domains including mobile
+    origin: '*',
     methods: ['GET', 'POST'],
-    credentials: true
   }
 });
 
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 app.get('/health', (req, res) => {
