@@ -4,17 +4,22 @@ const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
 
 let socket = null
 
+function createSocket() {
+  const s = io(SOCKET_URL, {
+    autoConnect: false,
+    transports: ['polling'],   // polling only — works through every mobile carrier/proxy
+    timeout: 30000,
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1500,
+    reconnectionDelayMax: 5000,
+  })
+  return s
+}
+
 export const getSocket = () => {
-  if (!socket) {
-    socket = io(SOCKET_URL, {
-      autoConnect: false,
-      transports: ['polling', 'websocket'], // polling first — works on all mobile networks
-      upgrade: true,
-      timeout: 20000,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    })
+  if (!socket || socket.disconnected) {
+    socket = createSocket()
   }
   return socket
 }
@@ -34,7 +39,16 @@ export const safeEmit = (event, data) => {
     s.emit(event, data)
   } else {
     s.once('connect', () => s.emit(event, data))
-    if (!s.connecting) s.connect()
+    if (!s.active) s.connect()
+  }
+}
+
+// Force a fresh socket — call this on reconnect_failed
+export const resetSocket = () => {
+  if (socket) {
+    socket.removeAllListeners()
+    socket.disconnect()
+    socket = null
   }
 }
 

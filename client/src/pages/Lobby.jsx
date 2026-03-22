@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { connectSocket, getSocket, safeEmit } from '../lib/socket'
+import { getSocket, safeEmit, resetSocket } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -67,7 +67,8 @@ export default function Lobby() {
       // ignore
     }
 
-    const socket = connectSocket()
+    // Set up listeners without connecting — connection only happens on user action
+    const socket = getSocket()
 
     socket.on('room_created', ({ roomCode: code, room }) => {
       setRoomCode(code)
@@ -101,9 +102,18 @@ export default function Lobby() {
       setIsConnecting(false)
     })
 
+    // Only show connection error if user explicitly tried to do something
     socket.on('connect_error', () => {
-      setError('Connection failed. Check your internet and try again.')
+      setIsConnecting(prev => {
+        if (prev) setError('Connection failed. Please try again.')
+        return false
+      })
+    })
+
+    socket.on('reconnect_failed', () => {
+      setError('Could not reach server. Please try again.')
       setIsConnecting(false)
+      resetSocket()
     })
 
     return () => {
@@ -113,6 +123,7 @@ export default function Lobby() {
       socket.off('game_started')
       socket.off('error')
       socket.off('connect_error')
+      socket.off('reconnect_failed')
     }
   }, [user, navigate])
 
