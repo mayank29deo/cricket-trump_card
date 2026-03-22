@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { getSocket, connectSocket, safeEmit, resetSocket } from '../lib/socket'
+import { getSocket, connectSocket } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -147,25 +147,28 @@ export default function Lobby() {
 
   const emitWithTimeout = (event, data, timeoutMs = 15000) => {
     const s = getSocket()
-    // Force a fresh connection every time user clicks — avoids stale socket state on mobile
-    if (!s.connected) {
-      resetSocket()
-      const fresh = connectSocket()
-      fresh.once('connect', () => fresh.emit(event, data))
+    const doEmit = () => s.emit(event, data)
+
+    if (s.connected) {
+      doEmit()
     } else {
-      s.emit(event, data)
+      // Socket not connected — reconnect and emit once connected
+      s.once('connect', doEmit)
+      if (!s.active) s.connect()
     }
-    // Safety timeout — if no response in 15s, show error
+
+    // Safety timeout — if no server response in 15s
     const timer = setTimeout(() => {
       if (isConnectingRef.current) {
+        s.off('connect', doEmit)
         setError('Server took too long to respond. Please try again.')
         isConnectingRef.current = false
         setIsConnecting(false)
       }
     }, timeoutMs)
-    // Clear timeout if room_created/room_joined fires (handled in useEffect listeners)
-    getSocket().once('room_created', () => clearTimeout(timer))
-    getSocket().once('room_joined', () => clearTimeout(timer))
+
+    s.once('room_created', () => clearTimeout(timer))
+    s.once('room_joined', () => clearTimeout(timer))
   }
 
   const handleCreateRoom = () => {
