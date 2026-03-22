@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { connectSocket, getSocket } from '../lib/socket'
+import { connectSocket, getSocket, safeEmit } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -101,12 +101,18 @@ export default function Lobby() {
       setIsConnecting(false)
     })
 
+    socket.on('connect_error', () => {
+      setError('Connection failed. Check your internet and try again.')
+      setIsConnecting(false)
+    })
+
     return () => {
       socket.off('room_created')
       socket.off('room_joined')
       socket.off('room_updated')
       socket.off('game_started')
       socket.off('error')
+      socket.off('connect_error')
     }
   }, [user, navigate])
 
@@ -125,8 +131,7 @@ export default function Lobby() {
     if (!user) return
     setError('')
     setIsConnecting(true)
-    const socket = getSocket()
-    socket.emit('create_room', {
+    safeEmit('create_room', {
       player: { id: user.id, name: user.name },
       timeOption
     })
@@ -140,8 +145,7 @@ export default function Lobby() {
     }
     setError('')
     setIsConnecting(true)
-    const socket = getSocket()
-    socket.emit('join_room', {
+    safeEmit('join_room', {
       roomCode: code,
       player: { id: user.id, name: user.name }
     })
@@ -152,8 +156,7 @@ export default function Lobby() {
   const handleJoinRecent = (code) => {
     setError('')
     setIsConnecting(true)
-    const socket = getSocket()
-    socket.emit('join_room', {
+    safeEmit('join_room', {
       roomCode: code,
       player: { id: user.id, name: user.name }
     })
