@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { getSocket, safeEmit, resetSocket } from '../lib/socket'
+import { getSocket, connectSocket, safeEmit, resetSocket } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -51,6 +51,7 @@ export default function Lobby() {
   const [copied, setCopied] = useState(false)
   const [recentRooms, setRecentRooms] = useState([])
   const [isConnecting, setIsConnecting] = useState(false)
+  const isConnectingRef = useRef(false)
   const joinInputRefs = useRef([])
 
   useEffect(() => {
@@ -67,13 +68,13 @@ export default function Lobby() {
       // ignore
     }
 
-    // Set up listeners without connecting — connection only happens on user action
-    const socket = getSocket()
+    const socket = connectSocket()
 
     socket.on('room_created', ({ roomCode: code, room }) => {
       setRoomCode(code)
       setRoomData(room)
       setView('waiting')
+      isConnectingRef.current = false
       setIsConnecting(false)
       saveRecentRoom(code)
     })
@@ -82,6 +83,7 @@ export default function Lobby() {
       setRoomData(room)
       setMyId(id)
       setView('waiting')
+      isConnectingRef.current = false
       setIsConnecting(false)
     })
 
@@ -99,20 +101,25 @@ export default function Lobby() {
 
     socket.on('error', ({ message }) => {
       setError(message)
+      isConnectingRef.current = false
       setIsConnecting(false)
     })
 
-    // Only show connection error if user explicitly tried to do something
+    // Only show error if the user was actively trying to create/join
     socket.on('connect_error', () => {
-      setIsConnecting(prev => {
-        if (prev) setError('Connection failed. Please try again.')
-        return false
-      })
+      if (isConnectingRef.current) {
+        setError('Connection failed. Please try again.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+      }
     })
 
     socket.on('reconnect_failed', () => {
-      setError('Could not reach server. Please try again.')
-      setIsConnecting(false)
+      if (isConnectingRef.current) {
+        setError('Could not reach server. Please try again.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+      }
       resetSocket()
     })
 
@@ -141,6 +148,7 @@ export default function Lobby() {
   const handleCreateRoom = () => {
     if (!user) return
     setError('')
+    isConnectingRef.current = true
     setIsConnecting(true)
     safeEmit('create_room', {
       player: { id: user.id, name: user.name },
@@ -155,6 +163,7 @@ export default function Lobby() {
       return
     }
     setError('')
+    isConnectingRef.current = true
     setIsConnecting(true)
     safeEmit('join_room', {
       roomCode: code,
@@ -166,6 +175,7 @@ export default function Lobby() {
 
   const handleJoinRecent = (code) => {
     setError('')
+    isConnectingRef.current = true
     setIsConnecting(true)
     safeEmit('join_room', {
       roomCode: code,
