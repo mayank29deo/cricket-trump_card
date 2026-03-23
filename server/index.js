@@ -24,9 +24,219 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Overall game timers (display-only countdown)
 const roomTimers = new Map();
 
-function startRoomTimer(roomCode, io) {
+// Phase timers for active_selecting / opponents_selecting
+const phaseTimers = new Map();
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function buildGameStatePublic(room) {
+  return {
+    code: room.code,
+    host: room.host,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      avatar: p.avatar,
+      score: p.score,
+      cardCount: p.hand.length,
+      isActive: p.isActive
+    })),
+    timeOption: room.timeOption,
+    gamePhase: room.gamePhase,
+    currentRound: room.currentRound,
+    activePlayerId: room.players[room.activePlayerIndex]?.id,
+    neutralPileCount: room.neutralPile.length,
+    roundTimeSeconds: room.roundTimeSeconds,
+    activePhaseSeconds: room.activePhaseSeconds,
+    opponentPhaseSeconds: room.opponentPhaseSeconds
+  };
+}
+
+function buildRoundResultPublic(roundResult) {
+  return {
+    stat: roundResult.stat,
+    winnerId: roundResult.winnerId,
+    isTie: roundResult.isTie,
+    neutralPileCount: roundResult.neutralPileCount,
+    currentRound: roundResult.currentRound,
+    cards: Object.entries(roundResult.roundCards).reduce((acc, [pid, data]) => {
+      acc[pid] = { card: data.card, statValue: data.statValue };
+      return acc;
+    }, {})
+  };
+}
+
+function clearPhaseTimer(roomCode) {
+  if (phaseTimers.has(roomCode)) {
+    const { tickInterval, expireTimeout } = phaseTimers.get(roomCode);
+    if (tickInterval) clearInterval(tickInterval);
+    if (expireTimeout) clearTimeout(expireTimeout);
+    phaseTimers.delete(roomCode);
+  }
+}
+
+/**
+ * After resolveRound completes, emit results and either game_ended or next
+ * game_state_update with fresh hands.
+ */
+function handleResolveResult(roomCode, result) {
+  if (!result || result.error) return;
+
+  const { room, roundResult, gameEnded, overallWinner } = result;
+
+  const roundResultPublic = buildRoundResultPublic(roundResult);
+  const gameStatePublic = buildGameStatePublic(room);
+
+  io.to(roomCode).emit('round_result', {
+    roundResult: roundResultPublic,
+    gameState: gameStatePublic
+  });
+
+  if (gameEnded) {
+    // Stop overall timer
+    if (roomTimers.has(roomCode)) {
+      clearInterval(roomTimers.get(roomCode));
+      roomTimers.delete(roomCode);
+    }
+    setTimeout(() => {
+      io.to(roomCode).emit('game_ended', {
+        reason: 'cards_exhausted',
+        overallWinner,
+        players: room.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar,
+          score: p.score,
+          cardCount: p.hand.length
+        }))
+      });
+    }, 3000);
+  } else {
+    // Send individual hands after a short reveal pause, then start next phase timer
+    setTimeout(() => {
+      room.players.forEach(player => {
+        const playerSocket = io.sockets.sockets.get(player.socketId);
+        if (playerSocket && player.isActive) {
+          playerSocket.emit('game_state_update', {
+            gameState: gameStatePublic,
+            myHand: player.hand
+          });
+        }
+      });
+
+      // Emit phase_changed for the new active_selecting phase
+      const activePlayerId = room.players[room.activePlayerIndex]?.id;
+      io.to(roomCode).emit('phase_changed', {
+        phase: 'active_selecting',
+        activePlayerId,
+        activeCard: null,
+        stat: null,
+        statValue: null,
+        phaseTimeLeft: room.activePhaseSeconds
+      });
+
+      // Start the active-selection phase timer
+      startActivePhaseTimer(roomCode);
+    }, 2500);
+  }
+}
+
+/**
+ * Start the active player's selection phase timer.
+ * On expiry: auto-select for active player, transition to opponents phase.
+ */
+function startActivePhaseTimer(roomCode) {
+  clearPhaseTimer(roomCode);
+
+  const room = gameManager.getRoom(roomCode);
+  if (!room || room.gamePhase !== 'active_selecting') return;
+
+  let phaseTimeLeft = room.activePhaseSeconds;
+
+  const tickInterval = setInterval(() => {
+    phaseTimeLeft -= 1;
+    const currentRoom = gameManager.getRoom(roomCode);
+    if (!currentRoom || currentRoom.gamePhase !== 'active_selecting') {
+      clearInterval(tickInterval);
+      return;
+    }
+    io.to(roomCode).emit('phase_timer_tick', { phaseTimeLeft, phase: 'active_selecting' });
+  }, 1000);
+
+  const expireTimeout = setTimeout(() => {
+    clearInterval(tickInterval);
+    phaseTimers.delete(roomCode);
+
+    const currentRoom = gameManager.getRoom(roomCode);
+    if (!currentRoom || currentRoom.gamePhase !== 'active_selecting') return;
+
+    // Auto-select for the active player
+    const autoResult = gameManager.autoSelectActive(roomCode);
+    if (autoResult.error) return;
+
+    const { room: updatedRoom, activeCard, stat } = autoResult;
+    const activePlayerId = updatedRoom.players[updatedRoom.activePlayerIndex]?.id;
+
+    io.to(roomCode).emit('phase_changed', {
+      phase: 'opponents_selecting',
+      activePlayerId,
+      activeCard,
+      stat,
+      statValue: activeCard.stats[stat],
+      phaseTimeLeft: updatedRoom.opponentPhaseSeconds
+    });
+
+    startOpponentPhaseTimer(roomCode);
+  }, room.activePhaseSeconds * 1000);
+
+  phaseTimers.set(roomCode, { tickInterval, expireTimeout });
+}
+
+/**
+ * Start the opponents' selection phase timer.
+ * On expiry: auto-select remaining opponents, then resolve round.
+ */
+function startOpponentPhaseTimer(roomCode) {
+  clearPhaseTimer(roomCode);
+
+  const room = gameManager.getRoom(roomCode);
+  if (!room || room.gamePhase !== 'opponents_selecting') return;
+
+  let phaseTimeLeft = room.opponentPhaseSeconds;
+
+  const tickInterval = setInterval(() => {
+    phaseTimeLeft -= 1;
+    const currentRoom = gameManager.getRoom(roomCode);
+    if (!currentRoom || currentRoom.gamePhase !== 'opponents_selecting') {
+      clearInterval(tickInterval);
+      return;
+    }
+    io.to(roomCode).emit('phase_timer_tick', { phaseTimeLeft, phase: 'opponents_selecting' });
+  }, 1000);
+
+  const expireTimeout = setTimeout(() => {
+    clearInterval(tickInterval);
+    phaseTimers.delete(roomCode);
+
+    const currentRoom = gameManager.getRoom(roomCode);
+    if (!currentRoom || currentRoom.gamePhase !== 'opponents_selecting') return;
+
+    // Auto-select remaining + resolve
+    const result = gameManager.autoSelectOpponents(roomCode);
+    handleResolveResult(roomCode, result);
+  }, room.opponentPhaseSeconds * 1000);
+
+  phaseTimers.set(roomCode, { tickInterval, expireTimeout });
+}
+
+/**
+ * Overall countdown timer — display only.
+ * Game can still continue past this; resolves by cards if not already done.
+ */
+function startRoomTimer(roomCode) {
   const room = gameManager.getRoom(roomCode);
   if (!room) return;
 
@@ -50,6 +260,8 @@ function startRoomTimer(roomCode, io) {
     if (timeLeft <= 0) {
       clearInterval(interval);
       roomTimers.delete(roomCode);
+      clearPhaseTimer(roomCode);
+
       const result = gameManager.handleTimerExpiry(roomCode);
       if (result) {
         io.to(roomCode).emit('game_ended', {
@@ -58,6 +270,7 @@ function startRoomTimer(roomCode, io) {
           players: result.room.players.map(p => ({
             id: p.id,
             name: p.name,
+            avatar: p.avatar,
             score: p.score,
             cardCount: p.hand.length
           }))
@@ -68,6 +281,8 @@ function startRoomTimer(roomCode, io) {
 
   roomTimers.set(roomCode, interval);
 }
+
+// ─── Socket Events ───────────────────────────────────────────────────────────
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -155,116 +370,103 @@ io.on('connection', (socket) => {
       }
 
       const updatedRoom = result.room;
+      const activePlayerId = updatedRoom.players[updatedRoom.activePlayerIndex]?.id;
 
+      // Send personalised game_started to each player with their hand
       updatedRoom.players.forEach(player => {
         const playerSocket = io.sockets.sockets.get(player.socketId);
         if (playerSocket) {
           playerSocket.emit('game_started', {
             myHand: player.hand,
             myId: player.id,
-            gameState: {
-              code: updatedRoom.code,
-              host: updatedRoom.host,
-              players: updatedRoom.players.map(p => ({
-                id: p.id,
-                name: p.name,
-                avatar: p.avatar,
-                score: p.score,
-                cardCount: p.hand.length,
-                isActive: p.isActive
-              })),
-              timeOption: updatedRoom.timeOption,
-              gamePhase: updatedRoom.gamePhase,
-              currentRound: updatedRoom.currentRound,
-              activePlayerId: updatedRoom.players[updatedRoom.activePlayerIndex]?.id,
-              timeLeft: updatedRoom.timeLeft
-            }
+            gameState: buildGameStatePublic(updatedRoom)
           });
         }
       });
 
-      startRoomTimer(roomCode, io);
+      // Emit initial phase_changed so all clients know we're in active_selecting
+      io.to(roomCode).emit('phase_changed', {
+        phase: 'active_selecting',
+        activePlayerId,
+        activeCard: null,
+        stat: null,
+        statValue: null,
+        phaseTimeLeft: updatedRoom.activePhaseSeconds
+      });
+
+      startRoomTimer(roomCode);
+      startActivePhaseTimer(roomCode);
+
       console.log(`Game started in room ${roomCode}`);
     } catch (err) {
       socket.emit('error', { message: err.message });
     }
   });
 
-  socket.on('select_stat', ({ roomCode, playerId, stat }) => {
+  /**
+   * Active player selects their card and a stat.
+   */
+  socket.on('select_card_stat', ({ roomCode, playerId, cardId, stat }) => {
     try {
-      const result = gameManager.selectStat(roomCode, playerId, stat);
+      const result = gameManager.selectCardAndStat(roomCode, playerId, cardId, stat);
 
       if (result.error) {
         socket.emit('error', { message: result.error });
         return;
       }
 
-      const { room, roundResult, gameEnded, overallWinner } = result;
+      // Cancel the active-phase timer since player has chosen
+      clearPhaseTimer(roomCode);
 
-      const roundResultPublic = {
-        stat: roundResult.stat,
-        winnerId: roundResult.winnerId,
-        isTie: roundResult.isTie,
-        neutralPileCount: roundResult.neutralPileCount,
-        currentRound: roundResult.currentRound,
-        cards: Object.entries(roundResult.roundCards).reduce((acc, [pid, data]) => {
-          acc[pid] = { card: data.card, statValue: data.statValue };
-          return acc;
-        }, {})
-      };
+      const { room, activeCard } = result;
+      const activePlayerId = room.players[room.activePlayerIndex]?.id;
 
-      const gameStatePublic = {
-        code: room.code,
-        host: room.host,
-        players: room.players.map(p => ({
-          id: p.id,
-          name: p.name,
-          avatar: p.avatar,
-          score: p.score,
-          cardCount: p.hand.length,
-          isActive: p.isActive
-        })),
-        timeOption: room.timeOption,
-        gamePhase: room.gamePhase,
-        currentRound: room.currentRound,
-        activePlayerId: room.players[room.activePlayerIndex]?.id,
-        neutralPileCount: room.neutralPile.length
-      };
-
-      io.to(roomCode).emit('round_result', {
-        roundResult: roundResultPublic,
-        gameState: gameStatePublic
+      io.to(roomCode).emit('phase_changed', {
+        phase: 'opponents_selecting',
+        activePlayerId,
+        activeCard,
+        stat,
+        statValue: activeCard.stats[stat],
+        phaseTimeLeft: room.opponentPhaseSeconds
       });
 
-      if (gameEnded) {
-        if (roomTimers.has(roomCode)) {
-          clearInterval(roomTimers.get(roomCode));
-          roomTimers.delete(roomCode);
-        }
-        setTimeout(() => {
-          io.to(roomCode).emit('game_ended', {
-            reason: 'cards_exhausted',
-            overallWinner,
-            players: room.players.map(p => ({
-              id: p.id,
-              name: p.name,
-              score: p.score,
-              cardCount: p.hand.length
-            }))
-          });
-        }, 3000);
+      startOpponentPhaseTimer(roomCode);
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  /**
+   * Opponent selects the card they want to play against the active player's card.
+   */
+  socket.on('select_opponent_card', ({ roomCode, playerId, cardId }) => {
+    try {
+      const result = gameManager.selectOpponentCard(roomCode, playerId, cardId);
+
+      if (result.error) {
+        socket.emit('error', { message: result.error });
+        return;
+      }
+
+      const { room, allSelected } = result;
+
+      if (allSelected) {
+        // Everyone has picked — resolve immediately, cancel phase timer
+        clearPhaseTimer(roomCode);
+        const resolveResult = gameManager.resolveRound(roomCode);
+        handleResolveResult(roomCode, resolveResult);
       } else {
-        setTimeout(() => {
-          room.players.forEach(player => {
-            const playerSocket = io.sockets.sockets.get(player.socketId);
-            if (playerSocket && player.isActive) {
-              playerSocket.emit('game_state_update', {
-                gameState: gameStatePublic,
-                myHand: player.hand
-              });
-            }
-          });
-        }, 2500);
+        // Notify everyone how many have submitted
+        const activePlayer = room.players[room.activePlayerIndex];
+        const activeOpponents = room.players.filter(
+          p => p.isActive && p.hand.length > 0 && p.id !== activePlayer.id
+        );
+        const submittedCount = Object.keys(room.opponentSelections).length;
+
+        io.to(roomCode).emit('opponent_selection_update', {
+          submittedCount,
+          totalOpponents: activeOpponents.length
+        });
       }
     } catch (err) {
       socket.emit('error', { message: err.message });

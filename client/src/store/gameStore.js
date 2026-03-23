@@ -5,7 +5,7 @@ const useGameStore = create((set, get) => ({
   roomData: null,
   myHand: [],
   myId: null,
-  gamePhase: 'waiting',
+  gamePhase: 'waiting',       // 'waiting' | 'active_selecting' | 'opponents_selecting' | 'ended'
   currentCard: null,
   roundResult: null,
   scores: {},
@@ -13,6 +13,12 @@ const useGameStore = create((set, get) => ({
   isMyTurn: false,
   overallWinner: null,
   gameEndData: null,
+
+  // New phase state
+  currentPhase: null,         // full phase data from server
+  phaseTimeLeft: 0,           // countdown for current phase
+  mySelectedCard: null,       // card I've chosen this round
+  hasSubmittedCard: false,    // whether I've submitted my card this round
 
   setRoom: (roomCode, roomData, myId) => {
     set({
@@ -61,6 +67,37 @@ const useGameStore = create((set, get) => ({
     })
   },
 
+  // Called when server emits phase_changed
+  setPhase: (phaseData) => {
+    set({
+      currentPhase: phaseData,
+      gamePhase: phaseData.phase,
+      phaseTimeLeft: phaseData.phaseTimeLeft,
+      // Reset per-round selections whenever the phase changes
+      mySelectedCard: null,
+      hasSubmittedCard: false
+    })
+  },
+
+  setPhaseTimeLeft: (seconds) => {
+    set({ phaseTimeLeft: seconds })
+  },
+
+  setMySelectedCard: (card) => {
+    set({ mySelectedCard: card })
+  },
+
+  clearRoundSelections: () => {
+    set({
+      mySelectedCard: null,
+      hasSubmittedCard: false
+    })
+  },
+
+  markCardSubmitted: () => {
+    set({ hasSubmittedCard: true })
+  },
+
   resetGame: () => {
     set({
       roomCode: null,
@@ -74,7 +111,11 @@ const useGameStore = create((set, get) => ({
       timeLeft: 0,
       isMyTurn: false,
       overallWinner: null,
-      gameEndData: null
+      gameEndData: null,
+      currentPhase: null,
+      phaseTimeLeft: 0,
+      mySelectedCard: null,
+      hasSubmittedCard: false
     })
   }
 }))

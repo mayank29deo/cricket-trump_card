@@ -25,6 +25,13 @@ const STAT_ICONS = {
   catches: '🤲'
 }
 
+// ─── Utility helpers ─────────────────────────────────────────────────────────
+
+function fmtVal(value) {
+  if (typeof value === 'number' && value % 1 !== 0) return value.toFixed(2)
+  return value
+}
+
 function getAvatarColor(name) {
   let hash = 0
   for (let i = 0; i < name.length; i++) {
@@ -33,6 +40,8 @@ function getAvatarColor(name) {
   const colors = ['#1e40af', '#7c3aed', '#b45309', '#065f46', '#9f1239', '#1e3a5f']
   return colors[Math.abs(hash) % colors.length]
 }
+
+// ─── Small reusable components ────────────────────────────────────────────────
 
 function PlayerAvatar({ name, size = 9 }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
@@ -66,20 +75,70 @@ function ConfettiPiece({ color, left, delay, duration }) {
 }
 
 function ConfettiEffect() {
-  const pieces = Array.from({ length: 60 }, (_, i) => ({
+  const pieces = Array.from({ length: 80 }, (_, i) => ({
     id: i,
     color: ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#fbbf24'][Math.floor(Math.random() * 6)],
     left: Math.random() * 100,
     delay: Math.random() * 2,
     duration: Math.random() * 2 + 2
   }))
-
   return (
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
       {pieces.map(p => <ConfettiPiece key={p.id} {...p} />)}
     </div>
   )
 }
+
+/** Phase countdown badge shown near action area */
+function PhaseTimer({ seconds, phase }) {
+  const isActive = phase === 'active_selecting'
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-rajdhani font-bold ${
+      isActive ? 'bg-emerald-700/40 border border-emerald-500/50 text-emerald-300'
+               : 'bg-amber-700/40 border border-amber-500/50 text-amber-300'
+    }`}>
+      <span className="animate-pulse">⏱</span>
+      <span>{seconds}s</span>
+    </div>
+  )
+}
+
+/**
+ * Horizontal scrollable hand row.
+ * Renders compact CricketCard previews. If a card is selected it gets a glow border.
+ * Cards in `lockedIds` are dimmed and not clickable.
+ */
+function HandRow({ cards, selectedCardId, onCardClick, lockedIds = [], statToHighlight = null }) {
+  return (
+    <div className="overflow-x-auto pb-2 -mx-3 px-3">
+      <div className="flex gap-2 w-max">
+        {cards.map(card => {
+          const isSelected = card.id === selectedCardId
+          const isLocked = lockedIds.includes(card.id)
+          return (
+            <div
+              key={card.id}
+              onClick={() => !isLocked && onCardClick && onCardClick(card)}
+              className={`flex-shrink-0 cursor-pointer transition-transform ${
+                isSelected ? 'scale-105' : isLocked ? 'opacity-40 cursor-default' : 'hover:scale-102 active:scale-95'
+              }`}
+              style={isSelected ? { filter: 'drop-shadow(0 0 8px #f59e0b)' } : undefined}
+            >
+              <CricketCard
+                card={card}
+                compact
+                selectedStat={isSelected && statToHighlight ? statToHighlight : null}
+                isActive={isSelected}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Game() {
   const navigate = useNavigate()
@@ -88,20 +147,31 @@ export default function Game() {
   const {
     roomData, myHand, myId, gamePhase, isMyTurn, timeLeft,
     overallWinner, gameEndData, roundResult,
-    setRoom, updateGameState, setMyHand, setRoundResult, setTimeLeft, setGameEnd, resetGame
+    currentPhase, phaseTimeLeft, mySelectedCard, hasSubmittedCard,
+    setRoom, updateGameState, setMyHand, setRoundResult, setTimeLeft,
+    setGameEnd, resetGame, setPhase, setPhaseTimeLeft, setMySelectedCard, markCardSubmitted
   } = useGameStore()
 
-  const [selectedStat, setSelectedStat] = useState(null)
+  // Local UI state
+  const [selectedCard, setSelectedCard] = useState(null)   // card object picked in active_selecting
+  const [pendingStatCard, setPendingStatCard] = useState(null) // card whose stat buttons are shown
   const [showRoundResult, setShowRoundResult] = useState(false)
   const [roundResultData, setRoundResultData] = useState(null)
   const [isFlipping, setIsFlipping] = useState(false)
   const [joinPrompt, setJoinPrompt] = useState(false)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState('')
+  const [opponentSubmits, setOpponentSubmits] = useState({ count: 0, total: 0 })
   const socketRef = useRef(null)
 
-  const currentCard = myHand?.[0] || null
   const totalTime = roomData?.timeOption ? roomData.timeOption * 60 : 360
+
+  // Derived
+  const activePlayerId = roomData?.activePlayerId || currentPhase?.activePlayerId
+  const isActivePlayer = activePlayerId === myId
+  const opponents = roomData?.players?.filter(p => p.id !== myId && p.isActive) || []
+
+  // ─── Socket wiring ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!user) {
@@ -126,9 +196,6 @@ export default function Game() {
     socket.on('room_joined', ({ room, myId: id }) => {
       setRoom(room.code, room, id)
       setJoinPrompt(false)
-      if (room.gamePhase === 'playing') {
-        // rejoining mid game, we need hands from server
-      }
     })
 
     socket.on('room_updated', ({ room }) => {
@@ -142,6 +209,21 @@ export default function Game() {
       setJoinPrompt(false)
     })
 
+    socket.on('phase_changed', (phaseData) => {
+      setPhase(phaseData)
+      setSelectedCard(null)
+      setPendingStatCard(null)
+      setOpponentSubmits({ count: 0, total: 0 })
+    })
+
+    socket.on('phase_timer_tick', ({ phaseTimeLeft: t }) => {
+      setPhaseTimeLeft(t)
+    })
+
+    socket.on('opponent_selection_update', ({ submittedCount, totalOpponents }) => {
+      setOpponentSubmits({ count: submittedCount, total: totalOpponents })
+    })
+
     socket.on('round_result', ({ roundResult: result, gameState }) => {
       setIsFlipping(true)
       setTimeout(() => setIsFlipping(false), 600)
@@ -149,19 +231,19 @@ export default function Game() {
       setRoundResultData(result)
       setShowRoundResult(true)
       setRoundResult(result)
+      updateGameState(gameState)
 
       setTimeout(() => {
         setShowRoundResult(false)
         setRoundResultData(null)
-        setSelectedStat(null)
+        setSelectedCard(null)
+        setPendingStatCard(null)
       }, 2500)
     })
 
     socket.on('game_state_update', ({ gameState, myHand: hand }) => {
       updateGameState(gameState)
-      if (hand) {
-        setMyHand(hand)
-      }
+      if (hand) setMyHand(hand)
     })
 
     socket.on('timer_tick', ({ timeLeft: tl }) => {
@@ -174,6 +256,7 @@ export default function Game() {
 
     socket.on('error', ({ message }) => {
       setError(message)
+      setTimeout(() => setError(''), 4000)
     })
 
     if (socket.connected) {
@@ -191,6 +274,9 @@ export default function Game() {
       socket.off('room_joined')
       socket.off('room_updated')
       socket.off('game_started')
+      socket.off('phase_changed')
+      socket.off('phase_timer_tick')
+      socket.off('opponent_selection_update')
       socket.off('round_result')
       socket.off('game_state_update')
       socket.off('timer_tick')
@@ -199,16 +285,41 @@ export default function Game() {
     }
   }, [roomCode, user])
 
+  // ─── Action handlers ────────────────────────────────────────────────────────
+
+  // Active player taps a card → show stat buttons for it
+  const handleCardPickForActive = useCallback((card) => {
+    if (!isActivePlayer || gamePhase !== 'active_selecting') return
+    setSelectedCard(card)
+    setPendingStatCard(card)
+  }, [isActivePlayer, gamePhase])
+
+  // Active player taps a stat after picking a card
   const handleSelectStat = useCallback((stat) => {
-    if (!isMyTurn || selectedStat) return
-    setSelectedStat(stat)
+    if (!isActivePlayer || !selectedCard) return
     const socket = getSocket()
-    socket.emit('select_stat', {
+    socket.emit('select_card_stat', {
       roomCode,
       playerId: myId,
+      cardId: selectedCard.id,
       stat
     })
-  }, [isMyTurn, selectedStat, roomCode, myId])
+    setPendingStatCard(null)
+    setSelectedCard(card => card) // keep highlight until phase changes
+  }, [isActivePlayer, selectedCard, roomCode, myId])
+
+  // Opponent picks their card to compete
+  const handleOpponentCardPick = useCallback((card) => {
+    if (isActivePlayer || gamePhase !== 'opponents_selecting' || hasSubmittedCard) return
+    const socket = getSocket()
+    socket.emit('select_opponent_card', {
+      roomCode,
+      playerId: myId,
+      cardId: card.id
+    })
+    setMySelectedCard(card)
+    markCardSubmitted()
+  }, [isActivePlayer, gamePhase, hasSubmittedCard, roomCode, myId, setMySelectedCard, markCardSubmitted])
 
   const handleLeaveGame = () => {
     const socket = getSocket()
@@ -222,107 +333,193 @@ export default function Game() {
     navigate('/lobby')
   }
 
-  // Game ended screen
+  // ─── POST-GAME SCREEN ───────────────────────────────────────────────────────
+
   if (gamePhase === 'ended' && gameEndData) {
     const players = gameEndData.players || []
     const winner = gameEndData.overallWinner
     const isWinner = winner?.id === myId
-    const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0))
+    const sortedPlayers = [...players].sort((a, b) => {
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0)
+      return (b.cardCount || 0) - (a.cardCount || 0)
+    })
+
+    const positionColors = [
+      'bg-amber-500 text-black',
+      'bg-slate-400 text-black',
+      'bg-amber-800 text-white'
+    ]
+    const positionEmojis = ['🥇', '🥈', '🥉']
 
     return (
-      <div className="min-h-screen stadium-bg flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden">
+      <div className="min-h-screen stadium-bg flex flex-col items-center justify-start px-4 py-8 relative overflow-hidden overflow-y-auto">
         {isWinner && <ConfettiEffect />}
 
-        <div className="w-full max-w-md text-center animate-bounce-in">
+        <div className="w-full max-w-md animate-bounce-in">
           {/* Result header */}
-          <div className={`text-6xl mb-4 ${isWinner ? 'animate-bounce' : ''}`}>
-            {isWinner ? '🏆' : '🏏'}
-          </div>
-          <h1 className="font-rajdhani font-bold text-4xl mb-2">
-            {isWinner ? (
-              <span className="gradient-text">YOU WIN!</span>
-            ) : (
-              <span className="text-white">GAME OVER</span>
+          <div className={`text-center mb-6 ${isWinner ? 'animate-bounce' : ''}`}>
+            <div className="text-7xl mb-3">{isWinner ? '🏆' : '🏏'}</div>
+            <h1 className="font-rajdhani font-bold text-4xl mb-1">
+              {isWinner ? (
+                <span className="gradient-text">YOU WIN!</span>
+              ) : (
+                <span className="text-white">GAME OVER</span>
+              )}
+            </h1>
+            {winner && (
+              <p className="text-slate-400 text-base">
+                {isWinner ? 'Congratulations, champion!' : `${winner.name} wins the match!`}
+              </p>
             )}
-          </h1>
-          {winner && (
-            <p className="text-slate-400 text-lg mb-6">
-              {isWinner ? 'Congratulations!' : `${winner.name} wins the match!`}
-            </p>
-          )}
+          </div>
 
-          {/* Winner podium */}
+          {/* Winner trophy card */}
           {winner && (
-            <div className="glass-card rounded-2xl p-5 mb-6 border border-amber-500/30">
-              <div className="flex items-center justify-center gap-3 mb-2">
+            <div className="glass-card rounded-2xl p-5 mb-5 border border-amber-500/40">
+              <div className="flex items-center gap-4">
                 <div
-                  className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl text-white"
+                  className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl text-white flex-shrink-0 border-2 border-amber-500"
                   style={{ backgroundColor: getAvatarColor(winner.name) }}
                 >
                   {winner.name?.[0]?.toUpperCase()}
                 </div>
-                <div className="text-left">
-                  <div className="text-amber-400 font-rajdhani font-bold text-xl">{winner.name}</div>
-                  <div className="text-slate-400 text-sm">🏆 Champion</div>
+                <div>
+                  <div className="text-amber-400 font-rajdhani font-bold text-2xl leading-tight">
+                    {winner.name}
+                  </div>
+                  <div className="text-slate-400 text-sm">🏆 Match Champion</div>
+                  <div className="text-emerald-400 text-sm font-semibold mt-0.5">
+                    {winner.score || 0} rounds won
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* All players scores */}
-          <div className="glass-card rounded-2xl p-5 mb-6">
-            <h3 className="font-rajdhani font-semibold text-white mb-4 text-left">Final Standings</h3>
+          {/* THIS GAME leaderboard */}
+          <div className="glass-card rounded-2xl p-5 mb-5">
+            <h3 className="font-rajdhani font-bold text-white mb-4 text-lg flex items-center gap-2">
+              <span>📋</span> THIS GAME LEADERBOARD
+            </h3>
             <div className="space-y-2">
-              {sortedPlayers.map((player, index) => (
-                <div key={player.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                    index === 0 ? 'bg-amber-500 text-black' :
-                    index === 1 ? 'bg-slate-400 text-black' :
-                    index === 2 ? 'bg-amber-800 text-white' : 'bg-pitch-700 text-slate-400'
-                  }`}>
-                    {index + 1}
+              {/* Header row */}
+              <div className="flex items-center gap-2 px-2 pb-1 border-b border-white/10">
+                <div className="w-8 text-center text-xs text-slate-500 font-semibold">#</div>
+                <div className="flex-1 text-xs text-slate-500 font-semibold">Player</div>
+                <div className="w-14 text-center text-xs text-slate-500 font-semibold">Rounds</div>
+                <div className="w-14 text-center text-xs text-slate-500 font-semibold">Cards</div>
+                <div className="w-14 text-center text-xs text-slate-500 font-semibold">Result</div>
+              </div>
+
+              {sortedPlayers.map((player, index) => {
+                const isMe = player.id === myId
+                const isThisWinner = player.id === winner?.id
+                return (
+                  <div
+                    key={player.id}
+                    className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                      isThisWinner ? 'bg-amber-500/10 border border-amber-500/30'
+                      : isMe ? 'bg-emerald-900/20 border border-emerald-700/30'
+                      : 'bg-white/5'
+                    }`}
+                  >
+                    {/* Position badge */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                      index < 3 ? positionColors[index] : 'bg-pitch-700 text-slate-400'
+                    }`}>
+                      {index < 3 ? positionEmojis[index] : index + 1}
+                    </div>
+
+                    {/* Avatar + name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0"
+                        style={{ backgroundColor: getAvatarColor(player.name) }}
+                      >
+                        {player.name?.[0]?.toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-white text-sm font-medium truncate">{player.name}</div>
+                        {isMe && (
+                          <div className="text-xs text-emerald-400 font-bold">YOU</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Rounds won */}
+                    <div className="w-14 text-center">
+                      <div className="text-emerald-400 font-rajdhani font-bold text-base">
+                        {player.score || 0}
+                      </div>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="w-14 text-center">
+                      <div className="text-slate-300 font-rajdhani font-bold text-base">
+                        {player.cardCount || 0}
+                      </div>
+                    </div>
+
+                    {/* Result badge */}
+                    <div className="w-14 text-center">
+                      {isThisWinner ? (
+                        <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded px-1.5 py-0.5 font-bold">
+                          WIN
+                        </span>
+                      ) : index === sortedPlayers.length - 1 ? (
+                        <span className="text-xs bg-red-900/20 text-red-400 border border-red-700/40 rounded px-1.5 py-0.5">
+                          LAST
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-slate-800 text-slate-400 border border-white/10 rounded px-1.5 py-0.5">
+                          #{index + 1}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <PlayerAvatar name={player.name} size={8} />
-                  <div className="flex-1 text-left">
-                    <div className="text-white text-sm font-medium">{player.name}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-emerald-400 font-rajdhani font-bold">{player.score || 0}</div>
-                    <div className="text-slate-500 text-xs">rounds won</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-slate-300 font-rajdhani font-bold">{player.cardCount || 0}</div>
-                    <div className="text-slate-500 text-xs">cards</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <Button variant="primary" fullWidth size="lg" onClick={handlePlayAgain} className="neon-border">
-              <span className="flex items-center justify-center gap-2">
-                <span>🔄</span>
-                Play Again
-              </span>
-            </Button>
-            <Button variant="ghost" fullWidth size="lg" onClick={() => navigate('/')}>
-              Home
-            </Button>
+          {/* Share + navigation */}
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                const text = `I just played Cricket Trump Card! ${isWinner ? '🏆 I won!' : `${winner?.name} won!`} 🏏`
+                navigator.clipboard?.writeText(text).catch(() => {})
+              }}
+              className="w-full p-3 rounded-xl border border-white/20 text-slate-300 text-sm font-medium hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
+            >
+              <span>📤</span> Share Result
+            </button>
+            <div className="flex gap-3">
+              <Button variant="primary" fullWidth size="lg" onClick={handlePlayAgain} className="neon-border">
+                <span className="flex items-center justify-center gap-2">
+                  <span>🔄</span> Play Again
+                </span>
+              </Button>
+              <Button variant="ghost" fullWidth size="lg" onClick={() => navigate('/')}>
+                Home
+              </Button>
+            </div>
           </div>
         </div>
       </div>
     )
   }
 
-  const activePlayerId = roomData?.activePlayerId
-  const isActivePlayer = activePlayerId === myId
-  const opponents = roomData?.players?.filter(p => p.id !== myId && p.isActive) || []
-  const myPlayerData = roomData?.players?.find(p => p.id === myId)
+  // ─── ACTIVE GAME SCREEN ─────────────────────────────────────────────────────
+
+  const activePhaseName = gamePhase === 'active_selecting' ? 'active_selecting' : 'opponents_selecting'
+  const announcedStat = currentPhase?.stat || null
+  const announcedCard = currentPhase?.activeCard || null
+  const announcedStatValue = currentPhase?.statValue ?? null
 
   return (
     <div className="min-h-screen stadium-bg flex flex-col overflow-hidden">
-      {/* Top Bar */}
+
+      {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-pitch-800/60 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <button
@@ -337,10 +534,8 @@ export default function Game() {
           </div>
         </div>
 
-        {/* Timer */}
         <GameTimer totalTime={totalTime} timeLeft={timeLeft} />
 
-        {/* Scores */}
         <div className="flex items-center gap-1">
           {roomData?.players?.slice(0, 4).map(p => (
             <div key={p.id} className="text-center">
@@ -356,9 +551,10 @@ export default function Game() {
         </div>
       </div>
 
-      {/* Main game area */}
+      {/* ── Main area ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Opponents area */}
+
+        {/* Opponents row */}
         <div className="px-3 pt-3 pb-2">
           <div className="flex items-start gap-3 justify-center flex-wrap">
             {opponents.length === 0 && gamePhase === 'waiting' && (
@@ -366,7 +562,6 @@ export default function Game() {
             )}
             {opponents.map(opponent => (
               <div key={opponent.id} className="flex flex-col items-center gap-1.5">
-                {/* Opponent card stack */}
                 <div className="relative">
                   {opponent.cardCount > 2 && (
                     <div style={{ position: 'absolute', top: -4, left: -4, zIndex: 0 }}>
@@ -382,15 +577,19 @@ export default function Game() {
                     <CricketCard isBack compact />
                   </div>
                 </div>
-                {/* Opponent info */}
                 <div className="flex items-center gap-1">
                   <PlayerAvatar name={opponent.name} size={5} />
                   <div className="text-xs text-slate-300 max-w-[60px] truncate">{opponent.name}</div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap justify-center">
                   <span className="text-xs text-slate-400">{opponent.cardCount} 🃏</span>
                   {opponent.id === activePlayerId && (
                     <span className="text-xs text-amber-400 font-bold animate-pulse">TURN</span>
+                  )}
+                  {/* Opponent submitted indicator */}
+                  {gamePhase === 'opponents_selecting' &&
+                    opponent.id !== activePlayerId && (
+                    <span className="text-xs text-emerald-400">✓</span>
                   )}
                 </div>
               </div>
@@ -422,8 +621,9 @@ export default function Game() {
                 <div className="text-center">
                   <div className="text-xl">🏆</div>
                   <div className="text-xs text-amber-400 font-bold">
-                    {roundResultData.winnerId === myId ? 'YOU WIN!' :
-                      roomData?.players?.find(p => p.id === roundResultData.winnerId)?.name + ' wins!'}
+                    {roundResultData.winnerId === myId
+                      ? 'YOU WIN!'
+                      : (roomData?.players?.find(p => p.id === roundResultData.winnerId)?.name || 'Player') + ' wins!'}
                   </div>
                 </div>
               )}
@@ -431,15 +631,14 @@ export default function Game() {
               <div className="flex flex-col items-end gap-1">
                 {Object.entries(roundResultData.cards || {}).map(([pid, data]) => {
                   const pName = roomData?.players?.find(p => p.id === pid)?.name
-                  const isWinner = pid === roundResultData.winnerId
+                  const isWinnerEntry = pid === roundResultData.winnerId
                   return (
                     <div key={pid} className="text-xs flex items-center gap-1">
-                      <span className={isWinner ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                      <span className={isWinnerEntry ? 'text-amber-400 font-bold' : 'text-slate-400'}>
                         {pName?.split(' ')[0]}:
                       </span>
-                      <span className={isWinner ? 'text-amber-300 font-bold' : 'text-slate-300'}>
-                        {typeof data.statValue === 'number' && data.statValue % 1 !== 0
-                          ? data.statValue.toFixed(2) : data.statValue}
+                      <span className={isWinnerEntry ? 'text-amber-300 font-bold' : 'text-slate-300'}>
+                        {fmtVal(data.statValue)}
                       </span>
                     </div>
                   )
@@ -454,153 +653,197 @@ export default function Game() {
           </div>
         )}
 
-        {/* Turn indicator */}
-        <div className="px-3 mb-2">
-          {gamePhase === 'playing' && (
-            <div className={`rounded-lg px-3 py-1.5 text-center text-sm font-rajdhani font-semibold ${
-              isActivePlayer
-                ? 'bg-emerald-800/40 border border-emerald-600/50 text-emerald-400'
-                : 'bg-pitch-700/40 border border-white/10 text-slate-400'
-            }`}>
-              {isActivePlayer ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-pulse">●</span>
-                  YOUR TURN — Choose a stat!
-                </span>
-              ) : (
-                <span>
-                  {roomData?.players?.find(p => p.id === activePlayerId)?.name || 'Opponent'}'s turn...
-                </span>
-              )}
-            </div>
-          )}
-          {gamePhase === 'waiting' && (
-            <div className="rounded-lg px-3 py-1.5 text-center text-sm text-slate-400 border border-white/5">
-              Waiting for game to start...
-            </div>
-          )}
-        </div>
+        {/* ─── Phase-specific main content ─── */}
+        <div className="flex-1 flex flex-col items-center px-3 pb-3 overflow-y-auto gap-3">
 
-        {/* Current card + stat buttons */}
-        <div className="flex-1 flex flex-col items-center px-3 pb-3 overflow-y-auto">
-          {currentCard ? (
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full max-w-2xl">
-              {/* My card */}
-              <div className={`flex-shrink-0 ${isFlipping ? 'animate-card-flip' : ''}`}>
-                <CricketCard
-                  card={currentCard}
-                  isActive={isActivePlayer && !selectedStat}
-                  selectedStat={selectedStat}
-                  onStatClick={handleSelectStat}
-                  isFlipped={isFlipping}
+          {/* ── Waiting to start ── */}
+          {gamePhase === 'waiting' && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-slate-400">
+                <div className="text-4xl mb-2 animate-float">🏏</div>
+                <p className="font-rajdhani font-semibold text-lg text-white">Waiting for host to start...</p>
+                <p className="text-sm mt-1">Cards will be dealt once the game begins</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── active_selecting — I AM the active player ── */}
+          {gamePhase === 'active_selecting' && isActivePlayer && myHand.length > 0 && (
+            <>
+              <div className="w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-emerald-400 text-sm font-rajdhani font-semibold">
+                    🏏 YOUR TURN — Pick a card
+                  </p>
+                  <PhaseTimer seconds={phaseTimeLeft} phase="active_selecting" />
+                </div>
+                <HandRow
+                  cards={myHand}
+                  selectedCardId={selectedCard?.id}
+                  onCardClick={handleCardPickForActive}
                 />
               </div>
 
-              {/* Stat buttons (mobile) */}
-              <div className="flex-1 w-full sm:hidden">
-                <div className="glass-card rounded-xl p-3">
+              {/* Stat picker appears after a card is picked */}
+              {pendingStatCard && (
+                <div className="w-full glass-card rounded-xl p-3">
                   <p className="text-slate-400 text-xs mb-2 font-medium text-center">
-                    {isActivePlayer ? 'SELECT A STAT TO PLAY' : 'WAITING FOR OPPONENT'}
+                    SELECT A STAT FOR <span className="text-amber-400">{pendingStatCard.name}</span>
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(STAT_LABELS).map(([stat, label]) => {
-                      const value = currentCard?.stats?.[stat]
-                      const isSelected = selectedStat === stat
+                      const value = pendingStatCard.stats?.[stat]
                       return (
                         <button
                           key={stat}
                           onClick={() => handleSelectStat(stat)}
-                          disabled={!isActivePlayer || !!selectedStat}
-                          className={`p-2.5 rounded-lg border text-left transition-all ${
-                            isSelected
-                              ? 'border-amber-500 bg-amber-500/20 text-amber-400'
-                              : isActivePlayer && !selectedStat
-                              ? 'border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 text-white cursor-pointer'
-                              : 'border-white/10 bg-white/5 text-slate-500 cursor-default'
-                          }`}
+                          className="p-2.5 rounded-lg border border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 text-white cursor-pointer transition-all text-left"
                         >
                           <div className="flex items-center gap-1.5 mb-0.5">
                             <span className="text-sm">{STAT_ICONS[stat]}</span>
                             <span className="text-xs font-semibold">{label}</span>
                           </div>
-                          <div className="font-rajdhani font-bold text-lg">
-                            {typeof value === 'number' && value % 1 !== 0 ? value.toFixed(2) : value}
-                          </div>
+                          <div className="font-rajdhani font-bold text-lg">{fmtVal(value)}</div>
                         </button>
                       )
                     })}
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Stat buttons (desktop) */}
-              <div className="flex-1 w-full hidden sm:block">
-                <div className="glass-card rounded-xl p-4">
-                  <p className="text-slate-400 text-xs mb-3 font-medium text-center">
-                    {isActivePlayer ? 'SELECT A STAT TO PLAY' : 'WAITING FOR OPPONENT'}
-                  </p>
-                  <div className="space-y-2">
-                    {Object.entries(STAT_LABELS).map(([stat, label]) => {
-                      const value = currentCard?.stats?.[stat]
-                      const isSelected = selectedStat === stat
-                      return (
-                        <button
-                          key={stat}
-                          onClick={() => handleSelectStat(stat)}
-                          disabled={!isActivePlayer || !!selectedStat}
-                          className={`w-full p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
-                            isSelected
-                              ? 'border-amber-500 bg-amber-500/20 text-amber-400'
-                              : isActivePlayer && !selectedStat
-                              ? 'border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 text-white cursor-pointer'
-                              : 'border-white/10 bg-white/5 text-slate-500 cursor-default'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{STAT_ICONS[stat]}</span>
-                            <span className="font-semibold text-sm">{label}</span>
-                          </div>
-                          <div className="font-rajdhani font-bold text-lg">
-                            {typeof value === 'number' && value % 1 !== 0 ? value.toFixed(2) : value}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
+              {selectedCard && !pendingStatCard && (
+                <div className="text-slate-400 text-sm flex items-center gap-2 animate-pulse">
+                  <span>⏳</span> Waiting for opponents to choose...
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              {gamePhase === 'playing' ? (
-                <div className="text-center text-slate-400">
-                  <div className="text-4xl mb-2">🃏</div>
-                  <p>You've run out of cards!</p>
-                  <p className="text-sm mt-1">Waiting for game to end...</p>
-                </div>
-              ) : gamePhase === 'waiting' ? (
-                <div className="text-center text-slate-400">
-                  <div className="text-4xl mb-2 animate-float">🏏</div>
-                  <p className="font-rajdhani font-semibold text-lg text-white">Waiting for host to start...</p>
-                  <p className="text-sm mt-1">Cards will be dealt once the game begins</p>
-                </div>
-              ) : null}
-            </div>
+              )}
+            </>
           )}
 
-          {/* My card count */}
-          {myHand.length > 0 && (
-            <div className="mt-3 flex items-center gap-4 text-sm text-slate-400">
-              <span>Your cards: <strong className="text-emerald-400">{myHand.length}</strong></span>
+          {/* ── active_selecting — I am NOT the active player ── */}
+          {gamePhase === 'active_selecting' && !isActivePlayer && (
+            <>
+              <div className="w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-slate-400 text-sm font-rajdhani">
+                    ⏳ <span className="text-amber-300 font-semibold">
+                      {roomData?.players?.find(p => p.id === activePlayerId)?.name || 'Opponent'}
+                    </span> is choosing...
+                  </p>
+                  <PhaseTimer seconds={phaseTimeLeft} phase="active_selecting" />
+                </div>
+                {/* Show my cards dimmed/locked */}
+                {myHand.length > 0 && (
+                  <HandRow
+                    cards={myHand}
+                    lockedIds={myHand.map(c => c.id)}
+                  />
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── opponents_selecting — I AM the active player ── */}
+          {gamePhase === 'opponents_selecting' && isActivePlayer && (
+            <>
+              {/* Show my played card prominently */}
+              {announcedCard && (
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <p className="text-slate-400 text-sm font-rajdhani">
+                      Your card is played
+                    </p>
+                    <PhaseTimer seconds={phaseTimeLeft} phase="opponents_selecting" />
+                  </div>
+                  <div style={{ filter: 'drop-shadow(0 0 12px #f59e0b)' }}>
+                    <CricketCard card={announcedCard} selectedStat={announcedStat} isActive />
+                  </div>
+                  {announcedStat && (
+                    <div className="text-emerald-400 font-rajdhani font-bold text-xl text-center">
+                      {STAT_ICONS[announcedStat]} {STAT_LABELS[announcedStat]}: {fmtVal(announcedStatValue)}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="text-slate-400 text-sm flex items-center gap-2">
+                <span>⏳</span>
+                Waiting for opponents — {opponentSubmits.count}/{opponentSubmits.total} ready
+              </div>
+            </>
+          )}
+
+          {/* ── opponents_selecting — I am NOT the active player ── */}
+          {gamePhase === 'opponents_selecting' && !isActivePlayer && (
+            <>
+              {/* Active player's card shown prominently */}
+              {announcedCard && (
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <p className="text-slate-400 text-sm font-rajdhani">
+                      <span className="text-amber-300 font-semibold">
+                        {roomData?.players?.find(p => p.id === activePlayerId)?.name || 'Opponent'}
+                      </span>'s card
+                    </p>
+                    <PhaseTimer seconds={phaseTimeLeft} phase="opponents_selecting" />
+                  </div>
+                  <div style={{ filter: 'drop-shadow(0 0 12px #f59e0b)' }}>
+                    <CricketCard card={announcedCard} selectedStat={announcedStat} isActive />
+                  </div>
+                  {announcedStat && (
+                    <div className="bg-emerald-600/20 border border-emerald-500/40 rounded-xl px-4 py-2 text-center">
+                      <div className="text-slate-400 text-xs mb-0.5">Beat this</div>
+                      <div className="text-emerald-300 font-rajdhani font-bold text-2xl">
+                        {STAT_ICONS[announcedStat]} {STAT_LABELS[announcedStat]}: {fmtVal(announcedStatValue)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* My hand to pick from */}
+              {!hasSubmittedCard ? (
+                <div className="w-full">
+                  <p className="text-white text-sm font-rajdhani font-semibold mb-2">
+                    Pick your card to play:
+                  </p>
+                  {myHand.length > 0 ? (
+                    <HandRow
+                      cards={myHand}
+                      onCardClick={handleOpponentCardPick}
+                      statToHighlight={announcedStat}
+                    />
+                  ) : (
+                    <p className="text-slate-500 text-sm">You have no cards left.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-emerald-400 font-semibold flex items-center gap-2">
+                  <span>✓</span> Card submitted! Waiting for others...
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Stats row */}
+          {myHand.length > 0 && gamePhase !== 'waiting' && (
+            <div className="mt-1 flex items-center gap-4 text-sm text-slate-400">
+              <span>Cards: <strong className="text-emerald-400">{myHand.length}</strong></span>
               {roomData?.neutralPileCount > 0 && (
-                <span>Neutral pile: <strong className="text-amber-400">{roomData.neutralPileCount}</strong></span>
+                <span>Pile: <strong className="text-amber-400">{roomData.neutralPileCount}</strong></span>
               )}
               <span>Round: <strong className="text-slate-300">{roomData?.currentRound || 0}</strong></span>
             </div>
           )}
 
+          {myHand.length === 0 && (gamePhase === 'active_selecting' || gamePhase === 'opponents_selecting') && (
+            <div className="text-center text-slate-400">
+              <div className="text-4xl mb-2">🃏</div>
+              <p>You've run out of cards!</p>
+              <p className="text-sm mt-1">Waiting for game to end...</p>
+            </div>
+          )}
+
           {error && (
-            <div className="mt-3 p-2 bg-red-900/30 border border-red-700/50 rounded-lg text-red-400 text-sm w-full max-w-md">
+            <div className="p-2 bg-red-900/30 border border-red-700/50 rounded-lg text-red-400 text-sm w-full max-w-md">
               {error}
             </div>
           )}
