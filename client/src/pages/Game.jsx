@@ -406,7 +406,7 @@ export default function Game() {
               <div className="flex items-center gap-2 px-2 pb-1 border-b border-white/10">
                 <div className="w-8 text-center text-xs text-slate-500 font-semibold">#</div>
                 <div className="flex-1 text-xs text-slate-500 font-semibold">Player</div>
-                <div className="w-14 text-center text-xs text-slate-500 font-semibold">Rounds</div>
+                <div className="w-14 text-center text-xs text-slate-500 font-semibold">Points</div>
                 <div className="w-14 text-center text-xs text-slate-500 font-semibold">Cards</div>
                 <div className="w-14 text-center text-xs text-slate-500 font-semibold">Result</div>
               </div>
@@ -693,17 +693,26 @@ export default function Game() {
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(STAT_LABELS).map(([stat, label]) => {
                       const value = pendingStatCard.stats?.[stat]
+                      const isBurned = pendingStatCard.usedStats?.includes(stat)
                       return (
                         <button
                           key={stat}
-                          onClick={() => handleSelectStat(stat)}
-                          className="p-2.5 rounded-lg border border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 text-white cursor-pointer transition-all text-left"
+                          onClick={() => !isBurned && handleSelectStat(stat)}
+                          disabled={isBurned}
+                          className={`p-2.5 rounded-lg border text-left transition-all ${
+                            isBurned
+                              ? 'border-red-900/40 bg-red-950/20 opacity-50 cursor-not-allowed'
+                              : 'border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 cursor-pointer text-white'
+                          }`}
                         >
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-sm">{STAT_ICONS[stat]}</span>
+                            <span className="text-sm">{isBurned ? '🔥' : STAT_ICONS[stat]}</span>
                             <span className="text-xs font-semibold">{label}</span>
+                            {isBurned && <span className="text-xs text-red-400 ml-auto">used</span>}
                           </div>
-                          <div className="font-rajdhani font-bold text-lg">{fmtVal(value)}</div>
+                          <div className={`font-rajdhani font-bold text-lg ${isBurned ? 'text-slate-600' : ''}`}>
+                            {fmtVal(value)}
+                          </div>
                         </button>
                       )
                     })}

@@ -21,6 +21,16 @@ function shuffleArray(array) {
   return arr;
 }
 
+/** Attach usedStats tracker to a card (preserving existing fields) */
+function freshCard(card) {
+  return { ...card, usedStats: [] };
+}
+
+/** Sum of card.points in a hand */
+function calcHandScore(hand) {
+  return hand.reduce((sum, c) => sum + (c.points || 25), 0);
+}
+
 function createRoom(hostPlayer, timeOption) {
   let code;
   do {
@@ -49,7 +59,6 @@ function createRoom(hostPlayer, timeOption) {
     neutralPile: [],
     timer: null,
     timeLeft: 0,
-    // New fields for card-selection mechanic
     activeCardId: null,
     activeStat: null,
     activePlayerCard: null,
@@ -66,15 +75,10 @@ function createRoom(hostPlayer, timeOption) {
 
 function joinRoom(roomCode, player) {
   const room = rooms.get(roomCode);
-  if (!room) {
-    return { error: 'Room not found' };
-  }
-  if (room.gamePhase !== 'waiting') {
-    return { error: 'Game already in progress' };
-  }
-  if (room.players.length >= 6) {
-    return { error: 'Room is full' };
-  }
+  if (!room) return { error: 'Room not found' };
+  if (room.gamePhase !== 'waiting') return { error: 'Game already in progress' };
+  if (room.players.length >= 6) return { error: 'Room is full' };
+
   const existingPlayer = room.players.find(p => p.id === player.id);
   if (existingPlayer) {
     existingPlayer.socketId = player.socketId;
@@ -96,42 +100,38 @@ function joinRoom(roomCode, player) {
 
 function startGame(roomCode) {
   const room = rooms.get(roomCode);
-  if (!room) {
-    return { error: 'Room not found' };
-  }
-  if (room.players.length < 2) {
-    return { error: 'Need at least 2 players' };
-  }
+  if (!room) return { error: 'Room not found' };
+  if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-  const shuffled = shuffleArray(cricketers);
+  // Shuffle all 104 cards, pick first 52 for this game session
+  const shuffledAll = shuffleArray(cricketers);
+  const gameCards = shuffledAll.slice(0, 52).map(freshCard);
+
   const playerCount = room.players.length;
   const cardsPerPlayer = Math.floor(52 / playerCount);
 
   room.players.forEach((player, index) => {
-    player.hand = shuffled.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
-    player.score = 0;
+    player.hand = gameCards.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
+    player.score = calcHandScore(player.hand);
     player.isActive = true;
   });
 
-  room.neutralPile = shuffled.slice(playerCount * cardsPerPlayer);
+  room.neutralPile = gameCards.slice(playerCount * cardsPerPlayer);
   room.activePlayerIndex = 0;
   room.currentRound = 0;
   room.roundCards = {};
   room.timeLeft = room.timeOption * 60;
 
-  // Calculate dynamic round timer — each phase gets at least 20s
+  // Dynamic round timer — each phase gets at least 20s
   const rawRoundTime = Math.floor((room.timeOption * 60) / Math.ceil(52 / playerCount));
   room.roundTimeSeconds = Math.max(40, Math.min(60, rawRoundTime));
   room.activePhaseSeconds = Math.max(20, Math.floor(room.roundTimeSeconds * 0.55));
   room.opponentPhaseSeconds = Math.max(20, Math.floor(room.roundTimeSeconds * 0.45));
 
-  // Reset selection fields
   room.activeCardId = null;
   room.activeStat = null;
   room.activePlayerCard = null;
   room.opponentSelections = {};
-
-  // New phase name
   room.gamePhase = 'active_selecting';
 
   return { room };
@@ -139,26 +139,21 @@ function startGame(roomCode) {
 
 function selectCardAndStat(roomCode, playerId, cardId, stat) {
   const room = rooms.get(roomCode);
-  if (!room) {
-    return { error: 'Room not found' };
-  }
-  if (room.gamePhase !== 'active_selecting') {
-    return { error: 'Not in card selection phase' };
-  }
+  if (!room) return { error: 'Room not found' };
+  if (room.gamePhase !== 'active_selecting') return { error: 'Not in card selection phase' };
 
   const activePlayer = room.players[room.activePlayerIndex];
-  if (!activePlayer || activePlayer.id !== playerId) {
-    return { error: 'Not your turn' };
-  }
+  if (!activePlayer || activePlayer.id !== playerId) return { error: 'Not your turn' };
 
   const validStats = ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
-  if (!validStats.includes(stat)) {
-    return { error: 'Invalid stat' };
-  }
+  if (!validStats.includes(stat)) return { error: 'Invalid stat' };
 
   const card = activePlayer.hand.find(c => c.id === cardId);
-  if (!card) {
-    return { error: 'Card not found in your hand' };
+  if (!card) return { error: 'Card not found in your hand' };
+
+  // Check if this stat has been burned on this card for this player
+  if (card.usedStats && card.usedStats.includes(stat)) {
+    return { error: `${stat} is already used for this card — pick a different stat or card` };
   }
 
   room.activeCardId = cardId;
@@ -172,36 +167,22 @@ function selectCardAndStat(roomCode, playerId, cardId, stat) {
 
 function selectOpponentCard(roomCode, playerId, cardId) {
   const room = rooms.get(roomCode);
-  if (!room) {
-    return { error: 'Room not found' };
-  }
-  if (room.gamePhase !== 'opponents_selecting') {
-    return { error: 'Not in opponent selection phase' };
-  }
+  if (!room) return { error: 'Room not found' };
+  if (room.gamePhase !== 'opponents_selecting') return { error: 'Not in opponent selection phase' };
 
   const activePlayer = room.players[room.activePlayerIndex];
-  if (activePlayer && activePlayer.id === playerId) {
-    return { error: 'Active player cannot select an opponent card' };
-  }
+  if (activePlayer && activePlayer.id === playerId) return { error: 'Active player cannot select an opponent card' };
 
   const player = room.players.find(p => p.id === playerId && p.isActive && p.hand.length > 0);
-  if (!player) {
-    return { error: 'Player not found or not active' };
-  }
+  if (!player) return { error: 'Player not found or not active' };
 
-  // Already submitted
-  if (room.opponentSelections[playerId]) {
-    return { error: 'Already selected a card this round' };
-  }
+  if (room.opponentSelections[playerId]) return { error: 'Already selected a card this round' };
 
   const card = player.hand.find(c => c.id === cardId);
-  if (!card) {
-    return { error: 'Card not found in your hand' };
-  }
+  if (!card) return { error: 'Card not found in your hand' };
 
   room.opponentSelections[playerId] = { card, cardId };
 
-  // Check if all active opponents have selected
   const activeOpponents = room.players.filter(
     p => p.isActive && p.hand.length > 0 && p.id !== activePlayer.id
   );
@@ -215,9 +196,7 @@ function autoSelectActive(roomCode) {
   if (!room) return { error: 'Room not found' };
 
   const activePlayer = room.players[room.activePlayerIndex];
-  if (!activePlayer || activePlayer.hand.length === 0) {
-    return { error: 'Active player has no cards' };
-  }
+  if (!activePlayer || activePlayer.hand.length === 0) return { error: 'Active player has no cards' };
 
   const validStats = ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
 
@@ -226,16 +205,33 @@ function autoSelectActive(roomCode) {
   let bestValue = -Infinity;
 
   activePlayer.hand.forEach(card => {
-    validStats.forEach(stat => {
-      const val = card.stats[stat] || 0;
+    validStats.forEach(s => {
+      // Skip burned stats
+      if (card.usedStats && card.usedStats.includes(s)) return;
+      const val = card.stats[s] || 0;
       if (val > bestValue) {
         bestValue = val;
         bestCard = card;
-        bestStat = stat;
+        bestStat = s;
       }
     });
   });
 
+  // Fallback: all stats burned on best cards — find any available combo
+  if (!bestCard) {
+    for (const card of activePlayer.hand) {
+      for (const s of validStats) {
+        if (!card.usedStats || !card.usedStats.includes(s)) {
+          bestCard = card;
+          bestStat = s;
+          break;
+        }
+      }
+      if (bestCard) break;
+    }
+  }
+
+  // Last resort: all stats burned on all cards — just pick first card/stat
   if (!bestCard) {
     bestCard = activePlayer.hand[0];
     bestStat = validStats[0];
@@ -257,9 +253,8 @@ function autoSelectOpponents(roomCode) {
 
   activeOpponents.forEach(player => {
     if (!room.opponentSelections[player.id]) {
-      // Pick card with highest value for the announced stat
       let bestCard = player.hand[0];
-      let bestValue = (player.hand[0].stats[stat] || 0);
+      let bestValue = player.hand[0].stats[stat] || 0;
       player.hand.forEach(card => {
         const val = card.stats[stat] || 0;
         if (val > bestValue) {
@@ -282,25 +277,16 @@ function resolveRound(roomCode) {
   const stat = room.activeStat;
   const activeCard = room.activePlayerCard;
 
-  if (!activeCard || !stat) {
-    return { error: 'No active card or stat selected' };
-  }
+  if (!activeCard || !stat) return { error: 'No active card or stat selected' };
 
   // Build roundCards: { playerId: { card, statValue } }
   const roundCards = {};
-
-  // Active player's card
   roundCards[activePlayer.id] = {
     card: activeCard,
     statValue: activeCard.stats[stat] || 0
   };
-
-  // Opponent cards
   Object.entries(room.opponentSelections).forEach(([pid, { card }]) => {
-    roundCards[pid] = {
-      card,
-      statValue: card.stats[stat] || 0
-    };
+    roundCards[pid] = { card, statValue: card.stats[stat] || 0 };
   });
 
   // Find max value
@@ -311,52 +297,59 @@ function resolveRound(roomCode) {
 
   const winners = Object.entries(roundCards).filter(([, { statValue }]) => statValue === maxValue);
   const playedCards = Object.values(roundCards).map(({ card }) => card);
-  const playedCardIds = new Set(playedCards.map(c => c.id));
 
   let winnerId = null;
+
+  // Remove all played cards from their owners' hands first
+  Object.entries(roundCards).forEach(([pid, { card }]) => {
+    const player = room.players.find(p => p.id === pid);
+    if (player) {
+      player.hand = player.hand.filter(c => c.id !== card.id);
+    }
+  });
 
   if (winners.length === 1) {
     winnerId = winners[0][0];
     const winner = room.players.find(p => p.id === winnerId);
+
     if (winner) {
-      // Remove winner's played card from hand
-      winner.hand = winner.hand.filter(c => !playedCardIds.has(c.id) || c.id !== roundCards[winnerId].card.id);
-      // Add all played cards to winner's hand
-      winner.hand.push(...playedCards);
-      // Also collect neutral pile
+      // Build cards for winner:
+      // - Active player's own card (if active player won): burn the winning stat
+      // - All other cards: come in fresh (no usedStats)
+      const cardsForWinner = playedCards.map(card => {
+        if (winnerId === activePlayer.id && card.id === activeCard.id) {
+          // Burn the winning stat on the active player's own card
+          return { ...card, usedStats: [...(card.usedStats || []), stat] };
+        }
+        // Opponent cards or active player's card going to an opponent: reset burns
+        return freshCard(card);
+      });
+
+      winner.hand.push(...cardsForWinner);
+
+      // Neutral pile goes to winner fresh
       if (room.neutralPile.length > 0) {
-        winner.hand.push(...room.neutralPile);
+        winner.hand.push(...room.neutralPile.map(freshCard));
         room.neutralPile = [];
       }
-      winner.score += 1;
-    }
 
-    // Remove played cards from other players
-    Object.entries(roundCards).forEach(([pid, { card }]) => {
-      if (pid !== winnerId) {
-        const player = room.players.find(p => p.id === pid);
-        if (player) {
-          player.hand = player.hand.filter(c => c.id !== card.id);
-        }
-      }
-    });
+      winner.score = calcHandScore(winner.hand);
+    }
   } else {
     // Tie: all played cards go to neutral pile
-    // Remove played cards from each player
-    Object.entries(roundCards).forEach(([pid, { card }]) => {
-      const player = room.players.find(p => p.id === pid);
-      if (player) {
-        player.hand = player.hand.filter(c => c.id !== card.id);
-        room.neutralPile.push(card);
-      }
-    });
+    playedCards.forEach(card => room.neutralPile.push(freshCard(card)));
   }
+
+  // Recompute scores for all other players (hands changed)
+  room.players.forEach(player => {
+    if (player.id !== winnerId) {
+      player.score = calcHandScore(player.hand);
+    }
+  });
 
   // Check eliminations
   room.players.forEach(player => {
-    if (player.hand.length === 0) {
-      player.isActive = false;
-    }
+    if (player.hand.length === 0) player.isActive = false;
   });
 
   room.currentRound += 1;
@@ -371,17 +364,18 @@ function resolveRound(roomCode) {
     if (stillActive.length === 1) {
       overallWinner = stillActive[0];
     } else {
-      let maxCards = -1;
+      // Everyone out — pick by highest score
+      let maxScore = -1;
       room.players.forEach(player => {
-        if (player.hand.length > maxCards) {
-          maxCards = player.hand.length;
+        if (player.score > maxScore) {
+          maxScore = player.score;
           overallWinner = player;
         }
       });
     }
     room.gamePhase = 'ended';
   } else {
-    // Determine next active player
+    // Next active player: winner if there is one, otherwise rotate
     if (winnerId) {
       const winnerIndex = room.players.findIndex(p => p.id === winnerId);
       room.activePlayerIndex = winnerIndex;
@@ -426,11 +420,12 @@ function handleTimerExpiry(roomCode) {
 
   room.gamePhase = 'ended';
 
-  let maxCards = -1;
+  // Winner = highest score (hand points)
+  let maxScore = -1;
   let winner = null;
   room.players.forEach(player => {
-    if (player.hand.length > maxCards) {
-      maxCards = player.hand.length;
+    if (player.score > maxScore) {
+      maxScore = player.score;
       winner = player;
     }
   });
@@ -453,11 +448,10 @@ function leaveRoom(roomCode, playerId) {
 
   const gameIsActive = room.gamePhase === 'active_selecting' || room.gamePhase === 'opponents_selecting';
 
-  if (gameIsActive) {
-    if (player.hand.length > 0) {
-      room.neutralPile.push(...player.hand);
-      player.hand = [];
-    }
+  if (gameIsActive && player.hand.length > 0) {
+    room.neutralPile.push(...player.hand.map(freshCard));
+    player.hand = [];
+    player.score = 0;
   }
 
   const activePlayers = room.players.filter(p => p.isActive);
@@ -476,11 +470,7 @@ function leaveRoom(roomCode, playerId) {
     if (stillActiveWithCards.length <= 1) {
       room.gamePhase = 'ended';
     } else {
-      // Adjust active player index if needed
-      if (
-        room.activePlayerIndex >= room.players.length ||
-        !room.players[room.activePlayerIndex].isActive
-      ) {
+      if (room.activePlayerIndex >= room.players.length || !room.players[room.activePlayerIndex].isActive) {
         let nextIndex = room.activePlayerIndex % room.players.length;
         let attempts = 0;
         while (!room.players[nextIndex].isActive && attempts < room.players.length) {
@@ -503,9 +493,7 @@ function updatePlayerSocket(roomCode, playerId, socketId) {
   const room = rooms.get(roomCode);
   if (!room) return null;
   const player = room.players.find(p => p.id === playerId);
-  if (player) {
-    player.socketId = socketId;
-  }
+  if (player) player.socketId = socketId;
   return room;
 }
 
