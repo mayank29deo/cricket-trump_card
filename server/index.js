@@ -12,9 +12,9 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-  pingInterval: 5000,   // poll every 5s instead of 25s — prevents iOS from killing long requests
-  pingTimeout: 10000,   // 10s timeout
-  upgradeTimeout: 5000,
+  pingInterval: 5000,
+  pingTimeout: 10000,
+  upgradeTimeout: 10000,  // give mobile connections more time to upgrade to WebSocket
 });
 
 app.use(cors({ origin: '*' }));
