@@ -70,59 +70,7 @@ export default function Lobby() {
     }
 
     const socket = connectSocket()
-
-    socket.on('room_created', ({ roomCode: code, room }) => {
-      setRoomCode(code)
-      setRoomData(room)
-      setView('waiting')
-      isConnectingRef.current = false
-      setIsConnecting(false)
-      saveRecentRoom(code)
-    })
-
-    socket.on('room_joined', ({ room, myId: id }) => {
-      setRoomData(room)
-      setMyId(id)
-      setView('waiting')
-      isConnectingRef.current = false
-      setIsConnecting(false)
-    })
-
-    socket.on('room_updated', ({ room }) => {
-      setRoomData(room)
-    })
-
-    socket.on('game_started', ({ myHand, myId: id, gameState }) => {
-      const store = useGameStore.getState()
-      store.setRoom(gameState.code, gameState, id)
-      store.setMyHand(myHand)
-      store.updateGameState(gameState)
-      navigate(`/game/${gameState.code}`)
-    })
-
-    socket.on('error', ({ message }) => {
-      setError(message)
-      isConnectingRef.current = false
-      setIsConnecting(false)
-    })
-
-    // Only show error if the user was actively trying to create/join
-    socket.on('connect_error', () => {
-      if (isConnectingRef.current) {
-        setError('Connection failed. Please try again.')
-        isConnectingRef.current = false
-        setIsConnecting(false)
-      }
-    })
-
-    socket.on('reconnect_failed', () => {
-      if (isConnectingRef.current) {
-        setError('Could not reach server. Please try again.')
-        isConnectingRef.current = false
-        setIsConnecting(false)
-      }
-      resetSocket()
-    })
+    attachListeners(socket)
 
     return () => {
       socket.off('room_created')
@@ -135,6 +83,54 @@ export default function Lobby() {
     }
   }, [user, navigate])
 
+  function attachListeners(socket) {
+    socket.on('room_created', ({ roomCode: code, room }) => {
+      setRoomCode(code)
+      setRoomData(room)
+      setView('waiting')
+      isConnectingRef.current = false
+      setIsConnecting(false)
+      saveRecentRoom(code)
+    })
+    socket.on('room_joined', ({ room, myId: id }) => {
+      setRoomData(room)
+      setMyId(id)
+      setView('waiting')
+      isConnectingRef.current = false
+      setIsConnecting(false)
+    })
+    socket.on('room_updated', ({ room }) => {
+      setRoomData(room)
+    })
+    socket.on('game_started', ({ myHand, myId: id, gameState }) => {
+      const store = useGameStore.getState()
+      store.setRoom(gameState.code, gameState, id)
+      store.setMyHand(myHand)
+      store.updateGameState(gameState)
+      navigate(`/game/${gameState.code}`)
+    })
+    socket.on('error', ({ message }) => {
+      setError(message)
+      isConnectingRef.current = false
+      setIsConnecting(false)
+    })
+    socket.on('connect_error', () => {
+      if (isConnectingRef.current) {
+        setError('Connection failed. Please try again.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+      }
+    })
+    socket.on('reconnect_failed', () => {
+      if (isConnectingRef.current) {
+        setError('Could not reach server. Please try again.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+      }
+      resetSocket()
+    })
+  }
+
   function saveRecentRoom(code) {
     try {
       const stored = JSON.parse(localStorage.getItem('recent_rooms') || '[]')
@@ -146,7 +142,7 @@ export default function Lobby() {
     }
   }
 
-  const emitWithTimeout = (event, data, timeoutMs = 15000) => {
+  const emitWithTimeout = (event, data, timeoutMs = 60000) => {
     const s = getSocket()
     const doEmit = () => s.emit(event, data)
 
@@ -201,10 +197,12 @@ export default function Lobby() {
       return
     }
 
-    // If falling back to Render, recreate socket pointed at fallback URL
+    // If falling back to Render, recreate socket and re-attach all listeners
     if (workingUrl !== PRIMARY_URL) {
-      resetSocket()
-      setActiveUrl(workingUrl)
+      resetSocket()               // destroys old socket + removes all its listeners
+      setActiveUrl(workingUrl)    // points module at Render URL
+      const newSocket = connectSocket()   // creates new socket + connects
+      attachListeners(newSocket)  // re-registers room_created, game_started, etc.
     }
 
     emitFn()
