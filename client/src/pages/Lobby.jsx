@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { getSocket, connectSocket } from '../lib/socket'
+import { getSocket, connectSocket, SOCKET_URL } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -171,15 +171,31 @@ export default function Lobby() {
     s.once('room_joined', () => clearTimeout(timer))
   }
 
+  const connectWithPreflight = async (emitFn) => {
+    setError('')
+    setIsConnecting(true)
+    isConnectingRef.current = true
+    // Wake the server and verify it's reachable before opening socket
+    try {
+      const res = await fetch(`${SOCKET_URL}/health`, { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) throw new Error('unhealthy')
+    } catch {
+      setError('Server unreachable on this network. Try WiFi or check your connection.')
+      isConnectingRef.current = false
+      setIsConnecting(false)
+      return
+    }
+    emitFn()
+  }
+
   const handleCreateRoom = () => {
     if (!user) return
-    setError('')
-    isConnectingRef.current = true
-    setIsConnecting(true)
-    emitWithTimeout('create_room', {
-      player: { id: user.id, name: user.name },
-      timeOption
-    })
+    connectWithPreflight(() =>
+      emitWithTimeout('create_room', {
+        player: { id: user.id, name: user.name },
+        timeOption
+      })
+    )
   }
 
   const handleJoinRoom = () => {
@@ -188,26 +204,24 @@ export default function Lobby() {
       setError('Please enter a complete 6-character room code')
       return
     }
-    setError('')
-    isConnectingRef.current = true
-    setIsConnecting(true)
-    emitWithTimeout('join_room', {
-      roomCode: code,
-      player: { id: user.id, name: user.name }
-    })
     setRoomCode(code)
     saveRecentRoom(code)
+    connectWithPreflight(() =>
+      emitWithTimeout('join_room', {
+        roomCode: code,
+        player: { id: user.id, name: user.name }
+      })
+    )
   }
 
   const handleJoinRecent = (code) => {
-    setError('')
-    isConnectingRef.current = true
-    setIsConnecting(true)
-    emitWithTimeout('join_room', {
-      roomCode: code,
-      player: { id: user.id, name: user.name }
-    })
     setRoomCode(code)
+    connectWithPreflight(() =>
+      emitWithTimeout('join_room', {
+        roomCode: code,
+        player: { id: user.id, name: user.name }
+      })
+    )
   }
 
   const handleStartGame = () => {
