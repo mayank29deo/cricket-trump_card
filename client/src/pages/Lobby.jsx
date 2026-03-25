@@ -51,6 +51,7 @@ export default function Lobby() {
   const [copied, setCopied] = useState(false)
   const [recentRooms, setRecentRooms] = useState([])
   const [isConnecting, setIsConnecting] = useState(false)
+  const [connectingMsg, setConnectingMsg] = useState('Connecting...')
   const isConnectingRef = useRef(false)
   const joinInputRefs = useRef([])
 
@@ -178,6 +179,7 @@ export default function Lobby() {
 
     // Try primary server (Railway — fast on WiFi)
     let workingUrl = null
+    setConnectingMsg('Connecting...')
     try {
       const res = await fetch(`${PRIMARY_URL}/health`, { signal: AbortSignal.timeout(6000) })
       if (res.ok) workingUrl = PRIMARY_URL
@@ -185,8 +187,9 @@ export default function Lobby() {
 
     // Try fallback server (Render — works on cellular)
     if (!workingUrl && FALLBACK_URL) {
+      setConnectingMsg('Waking up server... (~30s on first connect)')
       try {
-        const res = await fetch(`${FALLBACK_URL}/health`, { signal: AbortSignal.timeout(15000) })
+        const res = await fetch(`${FALLBACK_URL}/health`, { signal: AbortSignal.timeout(60000) })
         if (res.ok) workingUrl = FALLBACK_URL
       } catch { /* both failed */ }
     }
@@ -515,7 +518,7 @@ export default function Lobby() {
                 {isConnecting ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="animate-spin">⟳</span>
-                    Creating...
+                    {connectingMsg}
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
@@ -563,7 +566,7 @@ export default function Lobby() {
                 {isConnecting ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="animate-spin">⟳</span>
-                    Joining...
+                    {connectingMsg}
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
