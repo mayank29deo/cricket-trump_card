@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { getSocket, connectSocket, SOCKET_URL } from '../lib/socket'
+import { getSocket, connectSocket, resetSocket, PRIMARY_URL, FALLBACK_URL, setActiveUrl } from '../lib/socket'
 
 const TIME_OPTIONS = [
   { value: 4, label: '4 Min', desc: 'Quick Battle', icon: '⚡', color: 'emerald' },
@@ -175,16 +175,35 @@ export default function Lobby() {
     setError('')
     setIsConnecting(true)
     isConnectingRef.current = true
-    // Wake the server and verify it's reachable before opening socket
+
+    // Try primary server (Railway — fast on WiFi)
+    let workingUrl = null
     try {
-      const res = await fetch(`${SOCKET_URL}/health`, { signal: AbortSignal.timeout(8000) })
-      if (!res.ok) throw new Error('unhealthy')
-    } catch {
-      setError('Server unreachable on this network. Try WiFi or check your connection.')
+      const res = await fetch(`${PRIMARY_URL}/health`, { signal: AbortSignal.timeout(6000) })
+      if (res.ok) workingUrl = PRIMARY_URL
+    } catch { /* try fallback */ }
+
+    // Try fallback server (Render — works on cellular)
+    if (!workingUrl && FALLBACK_URL) {
+      try {
+        const res = await fetch(`${FALLBACK_URL}/health`, { signal: AbortSignal.timeout(15000) })
+        if (res.ok) workingUrl = FALLBACK_URL
+      } catch { /* both failed */ }
+    }
+
+    if (!workingUrl) {
+      setError('Server unreachable. Please check your internet connection.')
       isConnectingRef.current = false
       setIsConnecting(false)
       return
     }
+
+    // If falling back to Render, recreate socket pointed at fallback URL
+    if (workingUrl !== PRIMARY_URL) {
+      resetSocket()
+      setActiveUrl(workingUrl)
+    }
+
     emitFn()
   }
 

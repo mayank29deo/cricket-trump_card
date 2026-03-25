@@ -1,29 +1,33 @@
 import { io } from 'socket.io-client'
 
-export const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+export const PRIMARY_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+export const FALLBACK_URL = import.meta.env.VITE_SERVER_FALLBACK_URL || null
 
 let socket = null
+let activeUrl = PRIMARY_URL
+
+export const setActiveUrl = (url) => { activeUrl = url }
+
+const SOCKET_OPTIONS = {
+  autoConnect: false,
+  transports: ['polling', 'websocket'],
+  timeout: 20000,
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 3000,
+}
 
 export const getSocket = () => {
   if (!socket) {
-    socket = io(SOCKET_URL, {
-      autoConnect: false,
-      transports: ['polling', 'websocket'], // polling first — works through carrier proxies; upgrades to WS when available
-      timeout: 20000,
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 3000,
-    })
+    socket = io(activeUrl, SOCKET_OPTIONS)
   }
   return socket
 }
 
 export const connectSocket = () => {
   const s = getSocket()
-  if (!s.connected && !s.active) {
-    s.connect()
-  }
+  if (!s.connected && !s.active) s.connect()
   return s
 }
 
@@ -46,7 +50,5 @@ export const resetSocket = () => {
 }
 
 export const disconnectSocket = () => {
-  if (socket && socket.connected) {
-    socket.disconnect()
-  }
+  if (socket && socket.connected) socket.disconnect()
 }
