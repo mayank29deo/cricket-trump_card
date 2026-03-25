@@ -173,6 +173,10 @@ export default function Lobby() {
     setIsConnecting(true)
     isConnectingRef.current = true
 
+    // Kill the existing socket immediately — stops Railway reconnection attempts
+    // from firing connect_error while we await the preflight (race condition)
+    resetSocket()
+
     // Try primary server (Railway — fast on WiFi)
     let workingUrl = null
     setConnectingMsg('Connecting...')
@@ -197,13 +201,10 @@ export default function Lobby() {
       return
     }
 
-    // If falling back to Render, recreate socket and re-attach all listeners
-    if (workingUrl !== PRIMARY_URL) {
-      resetSocket()               // destroys old socket + removes all its listeners
-      setActiveUrl(workingUrl)    // points module at Render URL
-      const newSocket = connectSocket()   // creates new socket + connects
-      attachListeners(newSocket)  // re-registers room_created, game_started, etc.
-    }
+    // Create fresh socket pointed at the working URL, attach all listeners
+    setActiveUrl(workingUrl)
+    const freshSocket = connectSocket()
+    attachListeners(freshSocket)
 
     emitFn()
   }
