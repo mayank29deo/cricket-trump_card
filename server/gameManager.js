@@ -1,5 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const cricketers = require('./data/cricketers');
+const iplCricketers = require('./data/iplCricketers');
+
+const DECKS = { international: cricketers, ipl: iplCricketers };
 
 const rooms = new Map();
 
@@ -31,7 +34,7 @@ function calcHandScore(hand) {
   return hand.reduce((sum, c) => sum + (c.points || 25), 0);
 }
 
-function createRoom(hostPlayer, timeOption) {
+function createRoom(hostPlayer, timeOption, deckType) {
   let code;
   do {
     code = generateRoomCode();
@@ -52,6 +55,7 @@ function createRoom(hostPlayer, timeOption) {
       }
     ],
     timeOption: timeOption || 6,
+    deckType: deckType || 'international',
     gamePhase: 'waiting',
     currentRound: 0,
     activePlayerIndex: 0,
@@ -103,9 +107,9 @@ function startGame(roomCode) {
   if (!room) return { error: 'Room not found' };
   if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-  // Shuffle all 104 cards, pick first 52 for this game session
-  const shuffledAll = shuffleArray(cricketers);
-  const gameCards = shuffledAll.slice(0, 52).map(freshCard);
+  // Pick deck based on room setting, shuffle all 104, deal 52
+  const deck = DECKS[room.deckType] || cricketers;
+  const gameCards = shuffleArray(deck).slice(0, 52).map(freshCard);
 
   const playerCount = room.players.length;
   const cardsPerPlayer = Math.floor(52 / playerCount);

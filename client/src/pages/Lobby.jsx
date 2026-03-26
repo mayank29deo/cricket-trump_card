@@ -42,6 +42,7 @@ export default function Lobby() {
   const [view, setView] = useState('main') // 'main' | 'waiting'
   const [activeTab, setActiveTab] = useState('create')
   const [timeOption, setTimeOption] = useState(6)
+  const [deckType, setDeckType] = useState('international')
   const [roomCode, setRoomCode] = useState('')
   const [joinCodeDigits, setJoinCodeDigits] = useState(['', '', '', '', '', ''])
   const [roomData, setRoomData] = useState(null)
@@ -214,7 +215,8 @@ export default function Lobby() {
     connectWithPreflight(() =>
       emitWithTimeout('create_room', {
         player: { id: user.id, name: user.name },
-        timeOption
+        timeOption,
+        deckType
       })
     )
   }
@@ -342,6 +344,7 @@ export default function Lobby() {
               </div>
               <div className="flex items-center justify-center gap-4 mt-3 text-sm text-slate-400">
                 <span>⏱ {roomData.timeOption} min game</span>
+                <span>{roomData.deckType === 'ipl' ? '🏆 IPL Deck' : '🌍 International Deck'}</span>
                 <span>👥 {roomData.players.length} player{roomData.players.length !== 1 ? 's' : ''}</span>
               </div>
             </div>
@@ -483,6 +486,37 @@ export default function Lobby() {
 
           {activeTab === 'create' && (
             <div className="space-y-5 animate-slide-up">
+              {/* Deck Picker */}
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-rajdhani font-semibold text-white mb-3">Choose Card Deck</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setDeckType('international')}
+                    className={`rounded-xl p-4 border text-center transition-all ${
+                      deckType === 'international'
+                        ? 'border-emerald-500 bg-emerald-900/30'
+                        : 'border-white/10 hover:border-white/30 bg-white/5'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">🌍</div>
+                    <div className={`font-rajdhani font-bold text-base ${deckType === 'international' ? 'text-emerald-400' : 'text-white'}`}>International</div>
+                    <div className="text-slate-500 text-xs mt-0.5">All-time legends</div>
+                  </button>
+                  <button
+                    onClick={() => setDeckType('ipl')}
+                    className={`rounded-xl p-4 border text-center transition-all ${
+                      deckType === 'ipl'
+                        ? 'border-amber-500 bg-amber-900/30'
+                        : 'border-white/10 hover:border-white/30 bg-white/5'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">🏆</div>
+                    <div className={`font-rajdhani font-bold text-base ${deckType === 'ipl' ? 'text-amber-400' : 'text-white'}`}>IPL</div>
+                    <div className="text-slate-500 text-xs mt-0.5">T20 powerhouses</div>
+                  </button>
+                </div>
+              </div>
+
               <div className="glass-card rounded-2xl p-5">
                 <h3 className="font-rajdhani font-semibold text-white mb-3">Choose Game Duration</h3>
                 <div className="grid grid-cols-3 gap-3">

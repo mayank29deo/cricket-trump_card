@@ -45,6 +45,7 @@ function buildGameStatePublic(room) {
       isActive: p.isActive
     })),
     timeOption: room.timeOption,
+    deckType: room.deckType,
     gamePhase: room.gamePhase,
     currentRound: room.currentRound,
     activePlayerId: room.players[room.activePlayerIndex]?.id,
@@ -287,10 +288,10 @@ function startRoomTimer(roomCode) {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  socket.on('create_room', ({ player, timeOption }) => {
+  socket.on('create_room', ({ player, timeOption, deckType }) => {
     try {
       const playerWithSocket = { ...player, socketId: socket.id };
-      const room = gameManager.createRoom(playerWithSocket, timeOption);
+      const room = gameManager.createRoom(playerWithSocket, timeOption, deckType);
       socket.join(room.code);
       socket.emit('room_created', {
         roomCode: room.code,

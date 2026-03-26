@@ -25,6 +25,24 @@ const STAT_ICONS = {
   catches: '🤲'
 }
 
+const IPL_STAT_LABELS = {
+  ipl_runs: 'IPL Runs',
+  ipl_avg: 'IPL Avg',
+  ipl_sr: 'Strike Rate',
+  ipl_wickets: 'Wickets',
+  ipl_economy: 'Economy',
+  ipl_matches: 'Matches'
+}
+
+const IPL_STAT_ICONS = {
+  ipl_runs: '📊',
+  ipl_avg: '🏏',
+  ipl_sr: '⚡',
+  ipl_wickets: '🎯',
+  ipl_economy: '💰',
+  ipl_matches: '🏟️'
+}
+
 // ─── Utility helpers ─────────────────────────────────────────────────────────
 
 function fmtVal(value) {
@@ -163,6 +181,10 @@ export default function Game() {
   const [error, setError] = useState('')
   const [opponentSubmits, setOpponentSubmits] = useState({ count: 0, total: 0 })
   const socketRef = useRef(null)
+
+  const isIPL = roomData?.deckType === 'ipl'
+  const statLabels = isIPL ? IPL_STAT_LABELS : STAT_LABELS
+  const statIcons  = isIPL ? IPL_STAT_ICONS  : STAT_ICONS
 
   const totalTime = roomData?.timeOption ? roomData.timeOption * 60 : 360
 
@@ -602,11 +624,11 @@ export default function Game() {
           <div className="mx-3 mb-2 glass-card rounded-xl p-3 border border-emerald-500/30 animate-bounce-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-lg">{STAT_ICONS[roundResultData.stat]}</span>
+                <span className="text-lg">{statIcons[roundResultData.stat]}</span>
                 <div>
                   <div className="text-xs text-slate-400">Stat played</div>
                   <div className="font-rajdhani font-bold text-emerald-400">
-                    {STAT_LABELS[roundResultData.stat]}
+                    {statLabels[roundResultData.stat]}
                   </div>
                 </div>
               </div>
@@ -691,7 +713,7 @@ export default function Game() {
                     SELECT A STAT FOR <span className="text-amber-400">{pendingStatCard.name}</span>
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(STAT_LABELS).map(([stat, label]) => {
+                    {Object.entries(statLabels).map(([stat, label]) => {
                       const value = pendingStatCard.stats?.[stat]
                       const isBurned = pendingStatCard.usedStats?.includes(stat)
                       return (
@@ -706,7 +728,7 @@ export default function Game() {
                           }`}
                         >
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-sm">{isBurned ? '🔥' : STAT_ICONS[stat]}</span>
+                            <span className="text-sm">{isBurned ? '🔥' : statIcons[stat]}</span>
                             <span className="text-xs font-semibold">{label}</span>
                             {isBurned && <span className="text-xs text-red-400 ml-auto">used</span>}
                           </div>
@@ -768,7 +790,7 @@ export default function Game() {
                   </div>
                   {announcedStat && (
                     <div className="text-emerald-400 font-rajdhani font-bold text-xl text-center">
-                      {STAT_ICONS[announcedStat]} {STAT_LABELS[announcedStat]}: {fmtVal(announcedStatValue)}
+                      {statIcons[announcedStat]} {statLabels[announcedStat]}: {fmtVal(announcedStatValue)}
                     </div>
                   )}
                 </div>
@@ -801,7 +823,7 @@ export default function Game() {
                     <div className="bg-emerald-600/20 border border-emerald-500/40 rounded-xl px-4 py-2 text-center">
                       <div className="text-slate-400 text-xs mb-0.5">Beat this</div>
                       <div className="text-emerald-300 font-rajdhani font-bold text-2xl">
-                        {STAT_ICONS[announcedStat]} {STAT_LABELS[announcedStat]}: {fmtVal(announcedStatValue)}
+                        {statIcons[announcedStat]} {statLabels[announcedStat]}: {fmtVal(announcedStatValue)}
                       </div>
                     </div>
                   )}
