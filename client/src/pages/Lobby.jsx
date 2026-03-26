@@ -95,16 +95,32 @@ export default function Lobby() {
   useEffect(() => { roomCodeRef.current = roomCode }, [roomCode])
   useEffect(() => { myIdRef.current = myId }, [myId])
 
-  // When in waiting room and socket reconnects (new socket ID) → rejoin the room
+  // While in waiting room: sync room state every 4s + on reconnect
+  // Guarantees host sees new joiners even if room_updated was missed (mobile reconnect, etc.)
   useEffect(() => {
     if (view !== 'waiting' || !roomCode || !myId) return
     const socket = getSocket()
     if (!socket) return
-    const handleReconnect = () => {
-      socket.emit('rejoin_room', { roomCode: roomCodeRef.current, playerId: myIdRef.current })
+
+    const doSync = () => {
+      if (socket.connected) {
+        socket.emit('rejoin_room', { roomCode: roomCodeRef.current, playerId: myIdRef.current })
+      }
     }
-    socket.on('reconnect', handleReconnect)
-    return () => { socket.off('reconnect', handleReconnect) }
+
+    // Immediate sync when entering waiting room
+    doSync()
+
+    // Periodic sync every 4s as safety net
+    const interval = setInterval(doSync, 4000)
+
+    // Also sync immediately on reconnect
+    socket.on('reconnect', doSync)
+
+    return () => {
+      clearInterval(interval)
+      socket.off('reconnect', doSync)
+    }
   }, [view, roomCode, myId])
 
   function attachListeners(socket) {
