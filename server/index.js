@@ -96,16 +96,25 @@ function handleResolveResult(roomCode, result) {
     gameState: gameStatePublic
   });
 
-  if (gameEnded) {
+  // If overall timer expired mid-round, end after this round resolves
+  const timerExpiredMidRound = room.pendingEnd;
+
+  if (gameEnded || timerExpiredMidRound) {
     // Stop overall timer
     if (roomTimers.has(roomCode)) {
       clearInterval(roomTimers.get(roomCode));
       roomTimers.delete(roomCode);
     }
+
+    // Get final winner (re-use handleTimerExpiry if pendingEnd, else use resolved winner)
+    const finalWinner = timerExpiredMidRound
+      ? gameManager.handleTimerExpiry(roomCode)?.overallWinner
+      : overallWinner;
+
     setTimeout(() => {
       io.to(roomCode).emit('game_ended', {
-        reason: 'cards_exhausted',
-        overallWinner,
+        reason: timerExpiredMidRound ? 'timer' : 'cards_exhausted',
+        overallWinner: finalWinner,
         players: room.players.map(p => ({
           id: p.id,
           name: p.name,
@@ -258,24 +267,40 @@ function startRoomTimer(roomCode) {
 
     io.to(roomCode).emit('timer_tick', { timeLeft });
 
+    // Warn players at 15s so they know the next round is the last
+    if (timeLeft === 15) {
+      io.to(roomCode).emit('last_round_warning');
+    }
+
     if (timeLeft <= 0) {
       clearInterval(interval);
       roomTimers.delete(roomCode);
-      clearPhaseTimer(roomCode);
 
-      const result = gameManager.handleTimerExpiry(roomCode);
-      if (result) {
-        io.to(roomCode).emit('game_ended', {
-          reason: 'timer',
-          overallWinner: result.overallWinner,
-          players: result.room.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar,
-            score: p.score,
-            cardCount: p.hand.length
-          }))
-        });
+      const currentRoom = gameManager.getRoom(roomCode);
+      const midRound = currentRoom &&
+        (currentRoom.gamePhase === 'active_selecting' || currentRoom.gamePhase === 'opponents_selecting');
+
+      if (midRound) {
+        // Let the current round finish — handleResolveResult will end the game
+        currentRoom.pendingEnd = true;
+        io.to(roomCode).emit('timer_tick', { timeLeft: 0 }); // freeze display at 0
+      } else {
+        // No round in progress — end immediately
+        clearPhaseTimer(roomCode);
+        const result = gameManager.handleTimerExpiry(roomCode);
+        if (result) {
+          io.to(roomCode).emit('game_ended', {
+            reason: 'timer',
+            overallWinner: result.overallWinner,
+            players: result.room.players.map(p => ({
+              id: p.id,
+              name: p.name,
+              avatar: p.avatar,
+              score: p.score,
+              cardCount: p.hand.length
+            }))
+          });
+        }
       }
     }
   }, 1000);

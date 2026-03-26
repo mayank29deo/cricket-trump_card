@@ -126,11 +126,11 @@ function startGame(roomCode) {
   room.roundCards = {};
   room.timeLeft = room.timeOption * 60;
 
-  // Dynamic round timer — each phase gets at least 20s
+  // Dynamic round timer — each phase gets at least 24s
   const rawRoundTime = Math.floor((room.timeOption * 60) / Math.ceil(52 / playerCount));
-  room.roundTimeSeconds = Math.max(40, Math.min(60, rawRoundTime));
-  room.activePhaseSeconds = Math.max(20, Math.floor(room.roundTimeSeconds * 0.55));
-  room.opponentPhaseSeconds = Math.max(20, Math.floor(room.roundTimeSeconds * 0.45));
+  room.roundTimeSeconds = Math.max(48, Math.min(70, rawRoundTime));
+  room.activePhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.55));
+  room.opponentPhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.45));
 
   room.activeCardId = null;
   room.activeStat = null;
@@ -149,7 +149,10 @@ function selectCardAndStat(roomCode, playerId, cardId, stat) {
   const activePlayer = room.players[room.activePlayerIndex];
   if (!activePlayer || activePlayer.id !== playerId) return { error: 'Not your turn' };
 
-  const validStats = ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
+  const validStats = [
+    'batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches', // international
+    'ipl_runs', 'ipl_avg', 'ipl_sr', 'ipl_wickets', 'ipl_economy', 'ipl_matches'   // ipl
+  ];
   if (!validStats.includes(stat)) return { error: 'Invalid stat' };
 
   const card = activePlayer.hand.find(c => c.id === cardId);

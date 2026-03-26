@@ -180,6 +180,7 @@ export default function Game() {
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState('')
   const [opponentSubmits, setOpponentSubmits] = useState({ count: 0, total: 0 })
+  const [lastRound, setLastRound] = useState(false)
   const socketRef = useRef(null)
 
   const isIPL = roomData?.deckType === 'ipl'
@@ -272,6 +273,10 @@ export default function Game() {
       setTimeLeft(tl)
     })
 
+    socket.on('last_round_warning', () => {
+      setLastRound(true)
+    })
+
     socket.on('game_ended', (data) => {
       setGameEnd(data)
     })
@@ -302,6 +307,7 @@ export default function Game() {
       socket.off('round_result')
       socket.off('game_state_update')
       socket.off('timer_tick')
+      socket.off('last_round_warning')
       socket.off('game_ended')
       socket.off('error')
     }
@@ -557,6 +563,14 @@ export default function Game() {
         </div>
 
         <GameTimer totalTime={totalTime} timeLeft={timeLeft} />
+
+        {lastRound && (
+          <div className="mx-4 mb-2 py-1.5 px-3 bg-red-900/60 border border-red-500/60 rounded-lg text-center animate-pulse">
+            <span className="text-red-300 font-rajdhani font-bold text-sm tracking-wide">
+              🏁 LAST ROUND — finish this hand to end the game
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center gap-1">
           {roomData?.players?.slice(0, 4).map(p => (
