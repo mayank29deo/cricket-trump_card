@@ -528,6 +528,43 @@ io.on('connection', (socket) => {
     }
   });
 
+  /**
+   * Client reconnected (new socket ID) — re-add to room and refresh their state.
+   */
+  socket.on('rejoin_room', ({ roomCode, playerId }) => {
+    try {
+      const room = gameManager.getRoom(roomCode);
+      if (!room) return;
+      const player = room.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      // Update stale socket ID
+      player.socketId = socket.id;
+      socket.join(roomCode);
+
+      // Send current room state back to the rejoined client
+      const roomPublic = {
+        code: room.code,
+        host: room.host,
+        players: room.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar,
+          score: p.score,
+          cardCount: p.hand.length,
+          isActive: p.isActive
+        })),
+        timeOption: room.timeOption,
+        deckType: room.deckType,
+        gamePhase: room.gamePhase
+      };
+      socket.emit('room_updated', { room: roomPublic });
+      console.log(`Player ${player.name} rejoined room ${roomCode} with new socket`);
+    } catch (err) {
+      console.error('rejoin_room error:', err.message);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });

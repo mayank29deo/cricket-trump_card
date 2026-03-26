@@ -55,6 +55,13 @@ export default function Lobby() {
   const [connectingMsg, setConnectingMsg] = useState('Connecting...')
   const isConnectingRef = useRef(false)
   const joinInputRefs = useRef([])
+  // Track reachable servers and pending join for cross-server retry
+  const reachableUrlsRef = useRef([])
+  const pendingJoinRef = useRef(null)
+  const currentServerUrlRef = useRef(PRIMARY_URL)
+  // Stable refs for reconnect handler (avoids stale closures)
+  const roomCodeRef = useRef('')
+  const myIdRef = useRef(null)
 
   useEffect(() => {
     if (!user) {
@@ -84,6 +91,22 @@ export default function Lobby() {
     }
   }, [user, navigate])
 
+  // Keep refs in sync so reconnect handler always has fresh values
+  useEffect(() => { roomCodeRef.current = roomCode }, [roomCode])
+  useEffect(() => { myIdRef.current = myId }, [myId])
+
+  // When in waiting room and socket reconnects (new socket ID) → rejoin the room
+  useEffect(() => {
+    if (view !== 'waiting' || !roomCode || !myId) return
+    const socket = getSocket()
+    if (!socket) return
+    const handleReconnect = () => {
+      socket.emit('rejoin_room', { roomCode: roomCodeRef.current, playerId: myIdRef.current })
+    }
+    socket.on('reconnect', handleReconnect)
+    return () => { socket.off('reconnect', handleReconnect) }
+  }, [view, roomCode, myId])
+
   function attachListeners(socket) {
     socket.on('room_created', ({ roomCode: code, room }) => {
       setRoomCode(code)
@@ -94,6 +117,7 @@ export default function Lobby() {
       saveRecentRoom(code)
     })
     socket.on('room_joined', ({ room, myId: id }) => {
+      pendingJoinRef.current = null
       setRoomData(room)
       setMyId(id)
       setView('waiting')
@@ -111,6 +135,23 @@ export default function Lobby() {
       navigate(`/game/${gameState.code}`)
     })
     socket.on('error', ({ message }) => {
+      // Cross-server retry: if room not found on primary, try fallback (and vice versa)
+      if (message === 'Room not found' && pendingJoinRef.current) {
+        const { code, player } = pendingJoinRef.current
+        pendingJoinRef.current = null // prevent infinite retry loop
+        const otherUrls = reachableUrlsRef.current.filter(u => u !== currentServerUrlRef.current)
+        if (otherUrls.length > 0) {
+          setConnectingMsg('Trying alternate server...')
+          resetSocket()
+          currentServerUrlRef.current = otherUrls[0]
+          setActiveUrl(otherUrls[0])
+          const s = connectSocket()
+          attachListeners(s)
+          const doEmit = () => s.emit('join_room', { roomCode: code, player })
+          s.connected ? doEmit() : s.once('connect', doEmit)
+          return
+        }
+      }
       setError(message)
       isConnectingRef.current = false
       setIsConnecting(false)
@@ -229,22 +270,91 @@ export default function Lobby() {
     }
     setRoomCode(code)
     saveRecentRoom(code)
-    connectWithPreflight(() =>
-      emitWithTimeout('join_room', {
-        roomCode: code,
-        player: { id: user.id, name: user.name }
-      })
-    )
+
+    setError('')
+    setIsConnecting(true)
+    isConnectingRef.current = true
+    resetSocket()
+    setConnectingMsg('Connecting...')
+
+    // Check BOTH servers in parallel so we know which are reachable for cross-server retry
+    ;(async () => {
+      const reachable = []
+      await Promise.all([
+        fetch(`${PRIMARY_URL}/health`, { signal: AbortSignal.timeout(6000) })
+          .then(r => { if (r.ok) reachable.push(PRIMARY_URL) })
+          .catch(() => {}),
+        FALLBACK_URL
+          ? fetch(`${FALLBACK_URL}/health`, { signal: AbortSignal.timeout(8000) })
+              .then(r => { if (r.ok) reachable.push(FALLBACK_URL) })
+              .catch(() => {})
+          : Promise.resolve()
+      ])
+
+      if (reachable.length === 0) {
+        setError('Server unreachable. Please check your internet connection.')
+        isConnectingRef.current = false
+        setIsConnecting(false)
+        return
+      }
+
+      reachableUrlsRef.current = reachable
+      currentServerUrlRef.current = reachable[0]
+      pendingJoinRef.current = { code, player: { id: user.id, name: user.name } }
+
+      setActiveUrl(reachable[0])
+      const freshSocket = connectSocket()
+      attachListeners(freshSocket)
+      const player = { id: user.id, name: user.name }
+      const doEmit = () => freshSocket.emit('join_room', { roomCode: code, player })
+      freshSocket.connected ? doEmit() : freshSocket.once('connect', doEmit)
+    })()
   }
 
   const handleJoinRecent = (code) => {
-    setRoomCode(code)
-    connectWithPreflight(() =>
-      emitWithTimeout('join_room', {
-        roomCode: code,
-        player: { id: user.id, name: user.name }
-      })
-    )
+    setJoinCodeDigits(code.split(''))
+    setTimeout(() => {
+      // Reuse handleJoinRoom logic via digit state — trigger it directly
+      setError('')
+      setIsConnecting(true)
+      isConnectingRef.current = true
+      resetSocket()
+      setConnectingMsg('Connecting...')
+      setRoomCode(code)
+      saveRecentRoom(code)
+
+      ;(async () => {
+        const reachable = []
+        await Promise.all([
+          fetch(`${PRIMARY_URL}/health`, { signal: AbortSignal.timeout(6000) })
+            .then(r => { if (r.ok) reachable.push(PRIMARY_URL) })
+            .catch(() => {}),
+          FALLBACK_URL
+            ? fetch(`${FALLBACK_URL}/health`, { signal: AbortSignal.timeout(8000) })
+                .then(r => { if (r.ok) reachable.push(FALLBACK_URL) })
+                .catch(() => {})
+            : Promise.resolve()
+        ])
+
+        if (reachable.length === 0) {
+          setError('Server unreachable. Please check your internet connection.')
+          isConnectingRef.current = false
+          setIsConnecting(false)
+          return
+        }
+
+        reachableUrlsRef.current = reachable
+        currentServerUrlRef.current = reachable[0]
+        pendingJoinRef.current = { code, player: { id: user.id, name: user.name } }
+
+        setActiveUrl(reachable[0])
+        const freshSocket = connectSocket()
+        attachListeners(freshSocket)
+        const player = { id: user.id, name: user.name }
+        const doEmit = () => freshSocket.emit('join_room', { roomCode: code, player })
+        freshSocket.connected ? doEmit() : freshSocket.once('connect', doEmit)
+      })()
+    }, 0)
   }
 
   const handleStartGame = () => {
