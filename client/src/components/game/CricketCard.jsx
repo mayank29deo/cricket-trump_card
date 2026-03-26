@@ -1,21 +1,54 @@
 import React from 'react'
 
 const STAT_MAX = {
+  // International
   batting_avg: 100,
   strike_rate: 200,
   centuries: 100,
   total_runs: 35000,
   wickets: 1400,
-  catches: 450
+  catches: 450,
+  // IPL
+  ipl_runs: 8000,
+  ipl_avg: 80,
+  ipl_sr: 200,
+  ipl_wickets: 300,
+  ipl_economy: 12,
+  ipl_matches: 250
 }
 
 const STAT_LABELS = {
+  // International
   batting_avg: 'BAT AVG',
   strike_rate: 'STRIKE RATE',
   centuries: 'CENTURIES',
   total_runs: 'TOTAL RUNS',
   wickets: 'WICKETS',
-  catches: 'CATCHES'
+  catches: 'CATCHES',
+  // IPL
+  ipl_runs: 'IPL RUNS',
+  ipl_avg: 'IPL AVG',
+  ipl_sr: 'STRIKE RATE',
+  ipl_wickets: 'WICKETS',
+  ipl_economy: 'ECONOMY',
+  ipl_matches: 'MATCHES'
+}
+
+const STAT_BAR_COLORS = {
+  // International
+  batting_avg: '#10b981',
+  strike_rate: '#3b82f6',
+  centuries: '#f59e0b',
+  total_runs: '#10b981',
+  wickets: '#ef4444',
+  catches: '#8b5cf6',
+  // IPL
+  ipl_runs: '#10b981',
+  ipl_avg: '#3b82f6',
+  ipl_sr: '#f59e0b',
+  ipl_wickets: '#ef4444',
+  ipl_economy: '#8b5cf6',
+  ipl_matches: '#06b6d4'
 }
 
 const RARITY_COLORS = {
@@ -49,18 +82,10 @@ function getAvatarColor(name) {
 }
 
 function StatBar({ statKey, value, isSelected, onClick, isActive }) {
-  const max = STAT_MAX[statKey]
+  const max = STAT_MAX[statKey] || 100
   const percent = Math.min((value / max) * 100, 100)
-  const label = STAT_LABELS[statKey]
-
-  const barColor = isSelected
-    ? '#f59e0b'
-    : statKey === 'batting_avg' ? '#10b981'
-    : statKey === 'strike_rate' ? '#3b82f6'
-    : statKey === 'centuries' ? '#f59e0b'
-    : statKey === 'total_runs' ? '#10b981'
-    : statKey === 'wickets' ? '#ef4444'
-    : '#8b5cf6'
+  const label = STAT_LABELS[statKey] || statKey
+  const barColor = isSelected ? '#f59e0b' : (STAT_BAR_COLORS[statKey] || '#8b5cf6')
 
   return (
     <button
