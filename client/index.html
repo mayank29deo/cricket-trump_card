@@ -11,7 +11,7 @@
     <!-- Primary SEO -->
     <title>Cricket Trump Card — Battle Your Friends with Legendary Cricketers</title>
     <meta name="description" content="The ultimate multiplayer cricket card battle game. Pick from multiple International legends or IPL powerhouses, challenge stats head-to-head, and relive the nostalgia of cricket trump cards with your friends — online, real-time, for free." />
-    <meta name="keywords" content="cricket trump card game, cricket card game online, IPL card game, multiplayer cricket game, cricket trump cards, cricket game with friends" />
+    <meta name="keywords" content="cricket trump card game, cricket trump cards online, cricket card game online, IPL card game, IPL trump cards, multiplayer cricket game, cricket trump cards, cricket game with friends, cricket stat battle, online trump card game, cricket card battle, trump card game online free, cricket trump card app" />
     <meta name="author" content="Cricket Trump Card" />
     <link rel="canonical" href="https://www.trumpyard.com" />
 
@@ -34,9 +34,39 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Cricket Trump Card" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="robots" content="index, follow" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "Cricket Trump Card",
+      "alternateName": "Cricket Trump Cards Online",
+      "url": "https://www.trumpyard.com",
+      "description": "The ultimate multiplayer cricket trump card battle game. Pick from International legends or IPL stars, challenge stats head-to-head, and relive the nostalgia of cricket trump cards with your friends — online, real-time, for free.",
+      "image": "https://www.trumpyard.com/og-image.png",
+      "genre": ["Card Game", "Sports Game", "Multiplayer Game"],
+      "gamePlatform": ["Web Browser", "Mobile Browser"],
+      "numberOfPlayers": {
+        "@type": "QuantitativeValue",
+        "minValue": 2,
+        "maxValue": 6
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "INR"
+      },
+      "applicationCategory": "Game",
+      "operatingSystem": "Any",
+      "inLanguage": "en"
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
