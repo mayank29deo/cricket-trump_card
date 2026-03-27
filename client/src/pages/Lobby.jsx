@@ -477,9 +477,14 @@ export default function Lobby() {
 
             {/* Players list */}
             <div className="glass-card rounded-2xl p-6">
-              <h3 className="font-rajdhani font-semibold text-white mb-4">
-                Players ({roomData.players.length}/6)
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-rajdhani font-semibold text-white">
+                  Players ({roomData.players.length}/6)
+                </h3>
+                <span className="text-xs text-slate-500 bg-white/5 border border-white/10 px-2 py-1 rounded-full">
+                  👥 Max 6 players
+                </span>
+              </div>
               <div className="space-y-3">
                 {roomData.players.map(player => (
                   <div key={player.id} className="flex items-center gap-3">

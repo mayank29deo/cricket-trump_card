@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
 import useAuthStore from '../store/authStore'
+
+const TAGLINES = [
+  'Battle with legendary cricketers. Choose your stat. Dominate the pitch.',
+  'Remember those afternoons? Shuffling cards, arguing over Sachin\'s average — it\'s back.',
+  'The cricket trump cards you played as a kid, now with your friends online.',
+  'Tendulkar vs Bradman. Warne vs Murali. You decide who wins.',
+  'Every card a memory. Every stat a battle. Every round a story.',
+]
 
 const HOW_TO_PLAY_RULES = [
   {
@@ -54,10 +62,25 @@ export default function Home() {
   const navigate = useNavigate()
   const [showHowTo, setShowHowTo] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [taglineIndex, setTaglineIndex] = useState(0)
+  const [taglineFade, setTaglineFade] = useState(true)
   const { user } = useAuthStore()
 
   useEffect(() => {
     setTimeout(() => setLoaded(true), 100)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Fade out
+      setTaglineFade(false)
+      setTimeout(() => {
+        setTaglineIndex(i => (i + 1) % TAGLINES.length)
+        // Fade in
+        setTaglineFade(true)
+      }, 500)
+    }, 4000)
+    return () => clearInterval(interval)
   }, [])
 
   const handlePlay = () => {
@@ -123,9 +146,17 @@ export default function Home() {
             <span className="block text-4xl sm:text-6xl md:text-7xl text-white">TRUMP CARD</span>
           </h1>
 
-          {/* Subtitle */}
-          <p className="text-slate-400 text-lg sm:text-xl mt-4 mb-8 max-w-md mx-auto leading-relaxed">
-            Battle with legendary cricketers. Choose your stat. Dominate the pitch.
+          {/* Rotating tagline */}
+          <p
+            className="text-slate-400 text-lg sm:text-xl mt-4 mb-8 max-w-md mx-auto leading-relaxed italic"
+            style={{
+              transition: 'opacity 0.5s ease, transform 0.5s ease',
+              opacity: taglineFade ? 1 : 0,
+              transform: taglineFade ? 'translateY(0)' : 'translateY(6px)',
+              minHeight: '3.5rem'
+            }}
+          >
+            {TAGLINES[taglineIndex]}
           </p>
 
           {/* Buttons */}
