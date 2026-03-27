@@ -51,6 +51,7 @@ export default function Lobby() {
   const [showShare, setShowShare] = useState(false)
   const [copied, setCopied] = useState(false)
   const [recentRooms, setRecentRooms] = useState([])
+  const [nickname, setNickname] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingMsg, setConnectingMsg] = useState('Connecting...')
   const isConnectingRef = useRef(false)
@@ -271,7 +272,7 @@ export default function Lobby() {
     if (!user) return
     connectWithPreflight(() =>
       emitWithTimeout('create_room', {
-        player: { id: user.id, name: user.name },
+        player: { id: user.id, name: displayName },
         timeOption,
         deckType
       })
@@ -316,12 +317,12 @@ export default function Lobby() {
 
       reachableUrlsRef.current = reachable
       currentServerUrlRef.current = reachable[0]
-      pendingJoinRef.current = { code, player: { id: user.id, name: user.name } }
+      pendingJoinRef.current = { code, player: { id: user.id, name: displayName } }
 
       setActiveUrl(reachable[0])
       const freshSocket = connectSocket()
       attachListeners(freshSocket)
-      const player = { id: user.id, name: user.name }
+      const player = { id: user.id, name: displayName }
       const doEmit = () => freshSocket.emit('join_room', { roomCode: code, player })
       freshSocket.connected ? doEmit() : freshSocket.once('connect', doEmit)
     })()
@@ -361,12 +362,12 @@ export default function Lobby() {
 
         reachableUrlsRef.current = reachable
         currentServerUrlRef.current = reachable[0]
-        pendingJoinRef.current = { code, player: { id: user.id, name: user.name } }
+        pendingJoinRef.current = { code, player: { id: user.id, name: displayName } }
 
         setActiveUrl(reachable[0])
         const freshSocket = connectSocket()
         attachListeners(freshSocket)
-        const player = { id: user.id, name: user.name }
+        const player = { id: user.id, name: displayName }
         const doEmit = () => freshSocket.emit('join_room', { roomCode: code, player })
         freshSocket.connected ? doEmit() : freshSocket.once('connect', doEmit)
       })()
@@ -428,6 +429,9 @@ export default function Lobby() {
       joinInputRefs.current[Math.min(pasted.length, 5)]?.focus()
     }
   }
+
+  // Use nickname if entered, otherwise fall back to profile name
+  const displayName = nickname.trim() || user?.name || 'Player'
 
   const isHost = roomData?.host === myId
   const canStart = isHost && roomData?.players?.length >= 2
@@ -617,6 +621,28 @@ export default function Lobby() {
 
           {activeTab === 'create' && (
             <div className="space-y-5 animate-slide-up">
+              {/* Nickname */}
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-rajdhani font-semibold text-white mb-1">Battle Name <span className="text-slate-500 font-normal text-sm">(optional)</span></h3>
+                <p className="text-slate-500 text-xs mb-3">Enter a fun nickname for this session — leave blank to use your profile name</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg">🎭</span>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    value={nickname}
+                    onChange={e => setNickname(e.target.value)}
+                    placeholder={user?.name || 'Your name'}
+                    className="w-full bg-white/5 border border-white/15 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 font-rajdhani text-base transition-colors"
+                  />
+                  {nickname.trim() && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-400 font-semibold">
+                      ✓ {nickname.trim()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* Deck Picker */}
               <div className="glass-card rounded-2xl p-5">
                 <h3 className="font-rajdhani font-semibold text-white mb-3">Choose Card Deck</h3>
@@ -696,6 +722,28 @@ export default function Lobby() {
 
           {activeTab === 'join' && (
             <div className="space-y-5 animate-slide-up">
+              {/* Nickname */}
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-rajdhani font-semibold text-white mb-1">Battle Name <span className="text-slate-500 font-normal text-sm">(optional)</span></h3>
+                <p className="text-slate-500 text-xs mb-3">Enter a fun nickname for this session — leave blank to use your profile name</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg">🎭</span>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    value={nickname}
+                    onChange={e => setNickname(e.target.value)}
+                    placeholder={user?.name || 'Your name'}
+                    className="w-full bg-white/5 border border-white/15 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 font-rajdhani text-base transition-colors"
+                  />
+                  {nickname.trim() && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-400 font-semibold">
+                      ✓ {nickname.trim()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div className="glass-card rounded-2xl p-5">
                 <h3 className="font-rajdhani font-semibold text-white mb-4">Enter Room Code</h3>
                 <div className="flex gap-2 justify-center mb-2">
