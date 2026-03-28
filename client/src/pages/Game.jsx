@@ -159,6 +159,128 @@ function HandRow({ cards, selectedCardId, onCardClick, lockedIds = [], statToHig
   )
 }
 
+// ─── Stat Picker Bottom Sheet ─────────────────────────────────────────────────
+
+function StatPickerSheet({ card, statLabels, statIcons, onSelect, onClose }) {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    // Trigger slide-up on mount
+    const t = setTimeout(() => setVisible(true), 10)
+    return () => clearTimeout(t)
+  }, [])
+
+  const handleSelect = (stat) => {
+    setVisible(false)
+    setTimeout(() => onSelect(stat), 250)
+  }
+
+  const handleClose = () => {
+    setVisible(false)
+    setTimeout(() => onClose(), 250)
+  }
+
+  const statEntries = Object.entries(statLabels)
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 55,
+        display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+      }}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={handleClose}
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
+          opacity: visible ? 1 : 0, transition: 'opacity 0.25s',
+        }}
+      />
+
+      {/* Sheet */}
+      <div style={{
+        position: 'relative', zIndex: 1,
+        background: 'linear-gradient(180deg, #0f1e3a 0%, #080f20 100%)',
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '20px 20px 0 0',
+        padding: '0 16px 32px',
+        transform: visible ? 'translateY(0)' : 'translateY(100%)',
+        transition: 'transform 0.3s cubic-bezier(0.34,1.1,0.64,1)',
+        maxHeight: '80vh', overflowY: 'auto',
+      }}>
+        {/* Drag handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+        </div>
+
+        {/* Card info */}
+        <div style={{ textAlign: 'center', marginBottom: 16, paddingTop: 4 }}>
+          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 2, marginBottom: 4 }}>
+            SELECT STAT FOR
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#f59e0b', fontFamily: 'Rajdhani, sans-serif', letterSpacing: 1 }}>
+            {card.name}
+          </div>
+        </div>
+
+        {/* Stat grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {statEntries.map(([stat, label]) => {
+            const value = card.stats?.[stat]
+            const isBurned = card.usedStats?.includes(stat)
+            if (value === undefined) return null
+            return (
+              <button
+                key={stat}
+                onClick={() => !isBurned && handleSelect(stat)}
+                disabled={isBurned}
+                style={{
+                  background: isBurned ? 'rgba(127,29,29,0.15)' : 'rgba(16,185,129,0.12)',
+                  border: `1px solid ${isBurned ? 'rgba(185,28,28,0.3)' : 'rgba(16,185,129,0.35)'}`,
+                  borderRadius: 12, padding: '12px 10px', textAlign: 'left',
+                  cursor: isBurned ? 'not-allowed' : 'pointer',
+                  opacity: isBurned ? 0.5 : 1,
+                  touchAction: 'manipulation',
+                  transition: 'background 0.15s, border 0.15s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 16 }}>{isBurned ? '🔥' : statIcons[stat]}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: isBurned ? '#ef4444' : '#94a3b8', letterSpacing: 0.5 }}>
+                    {label}
+                  </span>
+                  {isBurned && <span style={{ fontSize: 10, color: '#ef4444', marginLeft: 'auto' }}>used</span>}
+                </div>
+                <div style={{
+                  fontSize: 24, fontWeight: 900, fontFamily: 'Rajdhani, sans-serif',
+                  color: isBurned ? '#475569' : '#f1f5f9', lineHeight: 1,
+                }}>
+                  {typeof value === 'number' && value % 1 !== 0 ? value.toFixed(2) : value}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Cancel */}
+        <button
+          onClick={handleClose}
+          style={{
+            marginTop: 14, width: '100%', padding: '12px',
+            borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
+            background: 'transparent', color: '#64748b', fontSize: 14,
+            fontWeight: 600, cursor: 'pointer', touchAction: 'manipulation',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Round Battle Animation Overlay ──────────────────────────────────────────
 
 function BattleCard({ playerName, card, statKey, statValue, isWinner, isTie, slideFrom, phase }) {
@@ -849,39 +971,10 @@ export default function Game() {
                 />
               </div>
 
-              {/* Stat picker appears after a card is picked */}
-              {pendingStatCard && (
-                <div className="w-full glass-card rounded-xl p-3">
-                  <p className="text-slate-400 text-xs mb-2 font-medium text-center">
-                    SELECT A STAT FOR <span className="text-amber-400">{pendingStatCard.name}</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(statLabels).map(([stat, label]) => {
-                      const value = pendingStatCard.stats?.[stat]
-                      const isBurned = pendingStatCard.usedStats?.includes(stat)
-                      return (
-                        <button
-                          key={stat}
-                          onClick={() => !isBurned && handleSelectStat(stat)}
-                          disabled={isBurned}
-                          className={`p-2.5 rounded-lg border text-left transition-all ${
-                            isBurned
-                              ? 'border-red-900/40 bg-red-950/20 opacity-50 cursor-not-allowed'
-                              : 'border-emerald-700/50 bg-emerald-900/20 hover:border-emerald-500 hover:bg-emerald-900/40 cursor-pointer text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-sm">{isBurned ? '🔥' : statIcons[stat]}</span>
-                            <span className="text-xs font-semibold">{label}</span>
-                            {isBurned && <span className="text-xs text-red-400 ml-auto">used</span>}
-                          </div>
-                          <div className={`font-rajdhani font-bold text-lg ${isBurned ? 'text-slate-600' : ''}`}>
-                            {fmtVal(value)}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
+              {/* Hint when card selected but sheet not open */}
+              {selectedCard && !pendingStatCard && (
+                <div className="text-slate-400 text-xs text-center animate-pulse">
+                  Tap the card again to reopen stat picker
                 </div>
               )}
 
@@ -1023,6 +1116,17 @@ export default function Game() {
           )}
         </div>
       </div>
+
+      {/* Stat picker bottom sheet — slides up when active player taps a card */}
+      {pendingStatCard && (
+        <StatPickerSheet
+          card={pendingStatCard}
+          statLabels={statLabels}
+          statIcons={statIcons}
+          onSelect={handleSelectStat}
+          onClose={() => setPendingStatCard(null)}
+        />
+      )}
     </div>
   )
 }
