@@ -354,6 +354,50 @@ io.on('connection', (socket) => {
       socket.join(roomCode);
       const room = result.room;
 
+      // Existing player rejoining
+      if (result.rejoining) {
+        if (room.gamePhase === 'ended') {
+          // Game is over — send final results so they can see the leaderboard
+          socket.emit('game_ended', {
+            reason: 'rejoined_ended',
+            overallWinner: room.overallWinner || null,
+            players: room.players.map(p => ({
+              id: p.id, name: p.name, avatar: p.avatar, score: p.score, cardCount: p.hand.length
+            }))
+          });
+        } else if (room.gamePhase !== 'waiting') {
+          // Game in progress — send full state so they can jump back in
+          const existingPlayer = room.players.find(p => p.id === player.id);
+          socket.emit('game_started', {
+            myHand: existingPlayer?.hand || [],
+            myId: player.id,
+            gameState: buildGameStatePublic(room)
+          });
+          // Also re-send current phase so they know whose turn it is
+          const activePlayerId = room.players[room.activePlayerIndex]?.id;
+          socket.emit('phase_changed', {
+            phase: room.gamePhase,
+            activePlayerId,
+            activeCard: room.activePlayerCard || null,
+            stat: room.activeStat || null,
+            statValue: room.activePlayerCard ? room.activePlayerCard.stats[room.activeStat] : null,
+            phaseTimeLeft: room.gamePhase === 'active_selecting' ? room.activePhaseSeconds : room.opponentPhaseSeconds
+          });
+          console.log(`Player ${player.name} rejoined mid-game in room ${roomCode}`);
+        } else {
+          // Still in waiting room — treat as normal rejoin
+          const roomPublic = {
+            code: room.code, host: room.host,
+            players: room.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, cardCount: p.hand.length, isActive: p.isActive })),
+            timeOption: room.timeOption, gamePhase: room.gamePhase
+          };
+          socket.emit('room_joined', { room: roomPublic, myId: player.id });
+          io.to(roomCode).emit('room_updated', { room: roomPublic });
+        }
+        return;
+      }
+
+      // New player joining waiting room
       const roomPublic = {
         code: room.code,
         host: room.host,

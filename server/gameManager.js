@@ -80,14 +80,16 @@ function createRoom(hostPlayer, timeOption, deckType) {
 function joinRoom(roomCode, player) {
   const room = rooms.get(roomCode);
   if (!room) return { error: 'Room not found' };
-  if (room.gamePhase !== 'waiting') return { error: 'Game already in progress' };
-  if (room.players.length >= 6) return { error: 'Room is full' };
 
+  // Allow existing players to rejoin regardless of game phase
   const existingPlayer = room.players.find(p => p.id === player.id);
   if (existingPlayer) {
     existingPlayer.socketId = player.socketId;
-    return { room };
+    return { room, rejoining: true };
   }
+
+  if (room.gamePhase !== 'waiting') return { error: 'Game already in progress' };
+  if (room.players.length >= 6) return { error: 'Room is full' };
 
   room.players.push({
     id: player.id,
@@ -381,6 +383,9 @@ function resolveRound(roomCode) {
       });
     }
     room.gamePhase = 'ended';
+    room.overallWinner = overallWinner
+      ? { id: overallWinner.id, name: overallWinner.name, score: overallWinner.score }
+      : null;
   } else {
     // Next active player: winner if there is one, otherwise rotate
     if (winnerId) {
@@ -437,10 +442,10 @@ function handleTimerExpiry(roomCode) {
     }
   });
 
-  return {
-    room,
-    overallWinner: winner ? { id: winner.id, name: winner.name, score: winner.score } : null
-  };
+  const overallWinner = winner ? { id: winner.id, name: winner.name, score: winner.score } : null;
+  room.overallWinner = overallWinner;
+
+  return { room, overallWinner };
 }
 
 function leaveRoom(roomCode, playerId) {

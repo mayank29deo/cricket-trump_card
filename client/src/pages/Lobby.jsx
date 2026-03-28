@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
+import Modal from '../components/ui/Modal'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
 import { getSocket, connectSocket, resetSocket, PRIMARY_URL, FALLBACK_URL, setActiveUrl } from '../lib/socket'
@@ -54,6 +55,7 @@ export default function Lobby() {
   const [nickname, setNickname] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingMsg, setConnectingMsg] = useState('Connecting...')
+  const [endedGameData, setEndedGameData] = useState(null)
   const isConnectingRef = useRef(false)
   const joinInputRefs = useRef([])
   // Track reachable servers and pending join for cross-server retry
@@ -86,6 +88,7 @@ export default function Lobby() {
       socket.off('room_joined')
       socket.off('room_updated')
       socket.off('game_started')
+      socket.off('game_ended')
       socket.off('error')
       socket.off('connect_error')
       socket.off('reconnect_failed')
@@ -150,6 +153,13 @@ export default function Lobby() {
       store.setMyHand(myHand)
       store.updateGameState(gameState)
       navigate(`/game/${gameState.code}`)
+    })
+    socket.on('game_ended', ({ reason, overallWinner, players }) => {
+      if (reason === 'rejoined_ended') {
+        isConnectingRef.current = false
+        setIsConnecting(false)
+        setEndedGameData({ overallWinner, players })
+      }
     })
     socket.on('error', ({ message }) => {
       // Cross-server retry: if room not found on primary, try fallback (and vice versa)
@@ -573,6 +583,31 @@ export default function Lobby() {
 
   return (
     <div className="min-h-screen stadium-bg flex flex-col">
+      {/* Game Already Ended Modal */}
+      <Modal isOpen={!!endedGameData} onClose={() => setEndedGameData(null)} title="Game Already Ended" maxWidth="max-w-sm">
+        <div className="space-y-4 mt-2">
+          {endedGameData?.overallWinner && (
+            <div className="text-center p-4 bg-amber-900/20 border border-amber-600/30 rounded-xl">
+              <div className="text-3xl mb-1">🏆</div>
+              <div className="text-amber-400 font-rajdhani font-bold text-lg">{endedGameData.overallWinner.name} Won!</div>
+              <div className="text-slate-400 text-sm">Score: {endedGameData.overallWinner.score}</div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {endedGameData?.players?.sort((a, b) => b.score - a.score).map((p, i) => (
+              <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 text-sm w-4">{i + 1}.</span>
+                  <span className="text-white text-sm font-medium">{p.name}</span>
+                </div>
+                <span className="text-emerald-400 text-sm font-bold">{p.score} pts</span>
+              </div>
+            ))}
+          </div>
+          <Button variant="primary" fullWidth onClick={() => setEndedGameData(null)}>Back to Lobby</Button>
+        </div>
+      </Modal>
+
       <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5">
         <button
           onClick={() => navigate('/')}
