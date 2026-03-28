@@ -322,16 +322,11 @@ function resolveRound(roomCode) {
     const winner = room.players.find(p => p.id === winnerId);
 
     if (winner) {
-      // Build cards for winner:
-      // - Active player's own card (if active player won): burn the winning stat
-      // - All other cards: come in fresh (no usedStats)
+      // Burn the round's stat on ALL played cards — whoever holds the card
+      // next cannot reuse the same stat on it (fair across all players)
       const cardsForWinner = playedCards.map(card => {
-        if (winnerId === activePlayer.id && card.id === activeCard.id) {
-          // Burn the winning stat on the active player's own card
-          return { ...card, usedStats: [...(card.usedStats || []), stat] };
-        }
-        // Opponent cards or active player's card going to an opponent: reset burns
-        return freshCard(card);
+        const used = card.usedStats || [];
+        return { ...card, usedStats: used.includes(stat) ? used : [...used, stat] };
       });
 
       winner.hand.push(...cardsForWinner);
@@ -345,8 +340,11 @@ function resolveRound(roomCode) {
       winner.score = calcHandScore(winner.hand);
     }
   } else {
-    // Tie: all played cards go to neutral pile
-    playedCards.forEach(card => room.neutralPile.push(freshCard(card)));
+    // Tie: burn the stat on cards going to neutral pile too
+    playedCards.forEach(card => {
+      const used = card.usedStats || [];
+      room.neutralPile.push({ ...card, usedStats: used.includes(stat) ? used : [...used, stat] });
+    });
   }
 
   // Recompute scores for all other players (hands changed)
