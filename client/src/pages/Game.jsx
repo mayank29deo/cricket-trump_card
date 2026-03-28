@@ -140,7 +140,10 @@ function HandRow({ cards, selectedCardId, onCardClick, lockedIds = [], statToHig
               className={`flex-shrink-0 cursor-pointer transition-transform ${
                 isSelected ? 'scale-105' : isLocked ? 'opacity-40 cursor-default' : 'hover:scale-102 active:scale-95'
               }`}
-              style={isSelected ? { filter: 'drop-shadow(0 0 8px #f59e0b)' } : undefined}
+              style={{
+                touchAction: 'manipulation',
+                ...(isSelected ? { filter: 'drop-shadow(0 0 8px #f59e0b)' } : {})
+              }}
             >
               <CricketCard
                 card={card}

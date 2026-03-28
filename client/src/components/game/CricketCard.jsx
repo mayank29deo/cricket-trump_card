@@ -98,6 +98,7 @@ function StatBar({ statKey, value, isSelected, onClick, isActive }) {
       }`}
       onClick={() => isActive && onClick && onClick(statKey)}
       disabled={!isActive}
+      style={{ pointerEvents: isActive ? 'auto' : 'none', touchAction: 'manipulation' }}
     >
       <div className="flex items-center justify-between mb-0.5">
         <span className={`text-xs font-semibold tracking-wide ${isSelected ? 'text-amber-400' : 'text-slate-400'}`}>
