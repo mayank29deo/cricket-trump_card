@@ -156,6 +156,181 @@ function HandRow({ cards, selectedCardId, onCardClick, lockedIds = [], statToHig
   )
 }
 
+// ─── Round Battle Animation Overlay ──────────────────────────────────────────
+
+function BattleCard({ playerName, card, statKey, statValue, isWinner, isTie, slideFrom, phase }) {
+  const entered = phase >= 1
+  const decided = phase >= 2
+
+  return (
+    <div style={{
+      transform: entered ? 'translateX(0) scale(1)' : `translateX(${slideFrom === 'left' ? '-120vw' : '120vw'})`,
+      opacity: decided && !isWinner && !isTie ? 0.35 : 1,
+      transition: 'transform 0.55s cubic-bezier(0.34,1.4,0.64,1), opacity 0.4s ease',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+    }}>
+      {/* Player name */}
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: isWinner && decided ? '#f59e0b' : '#94a3b8',
+        letterSpacing: 1, textTransform: 'uppercase', maxWidth: 90, textAlign: 'center',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+      }}>
+        {playerName}
+      </div>
+
+      {/* Card face */}
+      <div style={{
+        width: 88, borderRadius: 12,
+        background: 'linear-gradient(160deg, #1a2744 0%, #0f1e3a 100%)',
+        border: `2px solid ${isWinner && decided ? '#f59e0b' : isTie ? '#8b5cf6' : '#334155'}`,
+        boxShadow: isWinner && decided ? '0 0 20px #f59e0b80' : isTie ? '0 0 12px #8b5cf660' : 'none',
+        padding: '10px 8px', transition: 'border 0.3s, box-shadow 0.3s',
+        transform: decided && isWinner ? 'scale(1.08)' : 'scale(1)',
+      }}>
+        <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2, fontWeight: 600 }}>
+          {card?.country || '🌍'}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', lineHeight: 1.2, marginBottom: 8, minHeight: 28 }}>
+          {card?.name || 'Player'}
+        </div>
+        {/* Stat highlight */}
+        <div style={{
+          background: isWinner && decided ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.06)',
+          border: `1px solid ${isWinner && decided ? '#f59e0b60' : '#ffffff15'}`,
+          borderRadius: 8, padding: '5px 4px', textAlign: 'center',
+          transition: 'background 0.3s, border 0.3s'
+        }}>
+          <div style={{ fontSize: 9, color: '#64748b', fontWeight: 600, marginBottom: 2 }}>
+            {statKey?.replace(/_/g, ' ').toUpperCase()}
+          </div>
+          <div style={{
+            fontSize: 20, fontWeight: 900, lineHeight: 1,
+            color: isWinner && decided ? '#f59e0b' : '#e2e8f0',
+            fontFamily: 'Rajdhani, sans-serif'
+          }}>
+            {typeof statValue === 'number' && statValue % 1 !== 0 ? statValue.toFixed(2) : statValue}
+          </div>
+        </div>
+      </div>
+
+      {/* Winner badge */}
+      {isWinner && decided && (
+        <div style={{
+          background: 'linear-gradient(90deg,#f59e0b,#d97706)',
+          borderRadius: 20, padding: '3px 10px',
+          fontSize: 11, fontWeight: 800, color: '#000',
+          animation: 'popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
+          🏆 WINS!
+        </div>
+      )}
+      {isTie && decided && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>🤝 TIE</div>
+      )}
+    </div>
+  )
+}
+
+function RoundBattleOverlay({ result, players, myId, statLabels, statIcons, onDone }) {
+  const [phase, setPhase] = useState(0) // 0=hidden 1=slide-in 2=compare 3=winner
+
+  useEffect(() => {
+    const t0 = setTimeout(() => setPhase(1), 50)
+    const t1 = setTimeout(() => setPhase(2), 700)
+    const t2 = setTimeout(() => setPhase(3), 2000)
+    const t3 = setTimeout(() => onDone(), 3400)
+    return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
+  }, [])
+
+  const entries = Object.entries(result.cards || {})
+  const n = entries.length
+  const winnerName = result.winnerId
+    ? (players.find(p => p.id === result.winnerId)?.name || 'Player')
+    : null
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 60,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(4,10,26,0.92)', backdropFilter: 'blur(6px)',
+      padding: '16px'
+    }}>
+      {/* Header */}
+      <div style={{ marginBottom: 12, textAlign: 'center' }}>
+        <div style={{ fontSize: 11, color: '#475569', fontWeight: 600, letterSpacing: 2, marginBottom: 4 }}>
+          ROUND {result.currentRound}
+        </div>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)',
+          borderRadius: 20, padding: '5px 14px',
+        }}>
+          <span style={{ fontSize: 16 }}>{statIcons[result.stat]}</span>
+          <span style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, fontSize: 14, color: '#34d399', letterSpacing: 1 }}>
+            {statLabels[result.stat]?.toUpperCase()}
+          </span>
+        </div>
+      </div>
+
+      {/* VS area */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: n <= 2 ? 20 : 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {entries.map(([pid, { card, statValue }], i) => {
+          const player = players.find(p => p.id === pid)
+          const isWinner = pid === result.winnerId
+          const slideFrom = i < Math.ceil(n / 2) ? 'left' : 'right'
+          return (
+            <React.Fragment key={pid}>
+              <BattleCard
+                playerName={pid === myId ? 'YOU' : (player?.name || 'Player')}
+                card={card}
+                statKey={result.stat}
+                statValue={statValue}
+                isWinner={isWinner}
+                isTie={result.isTie}
+                slideFrom={slideFrom}
+                phase={phase}
+              />
+              {i < entries.length - 1 && phase >= 1 && (
+                <div style={{
+                  fontSize: n <= 2 ? 22 : 14, fontWeight: 900,
+                  color: 'rgba(255,255,255,0.2)', flexShrink: 0,
+                  opacity: phase >= 1 ? 1 : 0, transition: 'opacity 0.3s',
+                }}>
+                  VS
+                </div>
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+
+      {/* Winner announcement */}
+      <div style={{
+        marginTop: 20, minHeight: 32, textAlign: 'center',
+        opacity: phase >= 3 ? 1 : 0, transform: phase >= 3 ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'opacity 0.4s, transform 0.4s'
+      }}>
+        {result.isTie ? (
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#a78bfa' }}>
+            🤝 Cards go to neutral pile!
+          </div>
+        ) : winnerName && (
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b', fontFamily: 'Rajdhani, sans-serif' }}>
+            {result.winnerId === myId ? '🏆 YOU TAKE THE CARDS!' : `🏆 ${winnerName} takes the cards!`}
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes popIn {
+          0% { transform: scale(0); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Game() {
@@ -248,20 +423,10 @@ export default function Game() {
     })
 
     socket.on('round_result', ({ roundResult: result, gameState }) => {
-      setIsFlipping(true)
-      setTimeout(() => setIsFlipping(false), 600)
-
       setRoundResultData(result)
       setShowRoundResult(true)
       setRoundResult(result)
       updateGameState(gameState)
-
-      setTimeout(() => {
-        setShowRoundResult(false)
-        setRoundResultData(null)
-        setSelectedCard(null)
-        setPendingStatCard(null)
-      }, 2500)
     })
 
     socket.on('game_state_update', ({ gameState, myHand: hand }) => {
@@ -633,60 +798,21 @@ export default function Game() {
           </div>
         </div>
 
-        {/* Round result overlay */}
+        {/* Round battle animation overlay */}
         {showRoundResult && roundResultData && (
-          <div className="mx-3 mb-2 glass-card rounded-xl p-3 border border-emerald-500/30 animate-bounce-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{statIcons[roundResultData.stat]}</span>
-                <div>
-                  <div className="text-xs text-slate-400">Stat played</div>
-                  <div className="font-rajdhani font-bold text-emerald-400">
-                    {statLabels[roundResultData.stat]}
-                  </div>
-                </div>
-              </div>
-
-              {roundResultData.isTie ? (
-                <div className="text-center">
-                  <div className="text-xl">🤝</div>
-                  <div className="text-xs text-amber-400 font-bold">TIE!</div>
-                  <div className="text-xs text-slate-400">Cards go to pile</div>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <div className="text-xl">🏆</div>
-                  <div className="text-xs text-amber-400 font-bold">
-                    {roundResultData.winnerId === myId
-                      ? 'YOU WIN!'
-                      : (roomData?.players?.find(p => p.id === roundResultData.winnerId)?.name || 'Player') + ' wins!'}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col items-end gap-1">
-                {Object.entries(roundResultData.cards || {}).map(([pid, data]) => {
-                  const pName = roomData?.players?.find(p => p.id === pid)?.name
-                  const isWinnerEntry = pid === roundResultData.winnerId
-                  return (
-                    <div key={pid} className="text-xs flex items-center gap-1">
-                      <span className={isWinnerEntry ? 'text-amber-400 font-bold' : 'text-slate-400'}>
-                        {pName?.split(' ')[0]}:
-                      </span>
-                      <span className={isWinnerEntry ? 'text-amber-300 font-bold' : 'text-slate-300'}>
-                        {fmtVal(data.statValue)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            {roundResultData.neutralPileCount > 0 && (
-              <div className="mt-2 pt-2 border-t border-white/10 text-xs text-amber-400 text-center">
-                ⚠️ Neutral pile: {roundResultData.neutralPileCount} cards
-              </div>
-            )}
-          </div>
+          <RoundBattleOverlay
+            result={roundResultData}
+            players={roomData?.players || []}
+            myId={myId}
+            statLabels={statLabels}
+            statIcons={statIcons}
+            onDone={() => {
+              setShowRoundResult(false)
+              setRoundResultData(null)
+              setSelectedCard(null)
+              setPendingStatCard(null)
+            }}
+          />
         )}
 
         {/* ─── Phase-specific main content ─── */}
