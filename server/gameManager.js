@@ -109,12 +109,16 @@ function startGame(roomCode) {
   if (!room) return { error: 'Room not found' };
   if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-  // Pick deck based on room setting, shuffle all 104, deduplicate by id, deal 52
+  // Pick deck based on room setting, shuffle, deduplicate, deal dynamic count
   const deck = DECKS[room.deckType] || cricketers;
   const shuffled = shuffleArray(deck);
   const seen = new Set();
   const unique = shuffled.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
-  const gameCards = unique.slice(0, 52).map(card => {
+  // 2 players → 26 cards each (52 total); 3–6 players → 18 cards each
+  const playerCount = room.players.length;
+  const cardsPerPlayer = playerCount <= 2 ? 26 : 18;
+  const totalCardsNeeded = cardsPerPlayer * playerCount;
+  const gameCards = unique.slice(0, totalCardsNeeded).map(card => {
     const fc = freshCard(card);
     // Burn ipl_economy for pure batsmen (wickets < 1) so they can't pick economy
     if (room.deckType === 'ipl' && (card.stats.ipl_wickets || 0) < 1) {
@@ -122,9 +126,6 @@ function startGame(roomCode) {
     }
     return fc;
   });
-
-  const playerCount = room.players.length;
-  const cardsPerPlayer = Math.floor(52 / playerCount);
 
   room.players.forEach((player, index) => {
     player.hand = gameCards.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
@@ -139,7 +140,7 @@ function startGame(roomCode) {
   room.timeLeft = room.timeOption * 60;
 
   // Dynamic round timer — each phase gets at least 24s
-  const rawRoundTime = Math.floor((room.timeOption * 60) / Math.ceil(52 / playerCount));
+  const rawRoundTime = Math.floor((room.timeOption * 60) / cardsPerPlayer);
   room.roundTimeSeconds = Math.max(48, Math.min(70, rawRoundTime));
   room.activePhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.55));
   room.opponentPhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.45));

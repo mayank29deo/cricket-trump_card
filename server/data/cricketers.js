@@ -351,7 +351,197 @@ const cricketers = [
     rarity: "common", points: 25 },
   { id: 104, name: "Hasan Ali", country: "Pakistan", countryCode: "PK", role: "Bowler", era: "2016-present",
     stats: { batting_avg: 20.30, strike_rate: 51.20, centuries: 0, total_runs: 440, wickets: 220, catches: 30 },
-    rarity: "common", points: 25 }
+    rarity: "common", points: 25 },
+
+  // ─── EXPANSION SET (105–156) ──────────────────────────────────────────────
+
+  // India
+  { id: 105, name: "Cheteshwar Pujara", country: "India", countryCode: "IN", role: "Batsman", era: "2010-present",
+    stats: { batting_avg: 43.60, strike_rate: 61.10, centuries: 19, total_runs: 14000, wickets: 0, catches: 120 },
+    rarity: "rare", points: 50 },
+  { id: 106, name: "Ajinkya Rahane", country: "India", countryCode: "IN", role: "Batsman", era: "2011-present",
+    stats: { batting_avg: 38.91, strike_rate: 68.50, centuries: 12, total_runs: 10500, wickets: 0, catches: 145 },
+    rarity: "rare", points: 50 },
+  { id: 107, name: "Rishabh Pant", country: "India", countryCode: "IN", role: "WK-Batsman", era: "2017-present",
+    stats: { batting_avg: 43.87, strike_rate: 119.50, centuries: 6, total_runs: 5200, wickets: 0, catches: 190 },
+    rarity: "rare", points: 50 },
+  { id: 108, name: "Mohammad Shami", country: "India", countryCode: "IN", role: "Bowler", era: "2013-present",
+    stats: { batting_avg: 19.40, strike_rate: 46.80, centuries: 0, total_runs: 960, wickets: 430, catches: 38 },
+    rarity: "rare", points: 50 },
+  { id: 109, name: "Kuldeep Yadav", country: "India", countryCode: "IN", role: "Bowler", era: "2017-present",
+    stats: { batting_avg: 18.60, strike_rate: 42.30, centuries: 0, total_runs: 550, wickets: 330, catches: 22 },
+    rarity: "rare", points: 50 },
+  { id: 110, name: "Mohinder Amarnath", country: "India", countryCode: "IN", role: "All-Rounder", era: "1969-1988",
+    stats: { batting_avg: 42.50, strike_rate: 62.00, centuries: 11, total_runs: 12039, wickets: 32, catches: 64 },
+    rarity: "rare", points: 50 },
+
+  // Australia
+  { id: 111, name: "Michael Hussey", country: "Australia", countryCode: "AU", role: "Batsman", era: "2004-2013",
+    stats: { batting_avg: 51.52, strike_rate: 85.20, centuries: 19, total_runs: 13378, wickets: 0, catches: 98 },
+    rarity: "epic", points: 75 },
+  { id: 112, name: "Justin Langer", country: "Australia", countryCode: "AU", role: "Batsman", era: "1993-2007",
+    stats: { batting_avg: 45.27, strike_rate: 74.60, centuries: 23, total_runs: 14163, wickets: 0, catches: 125 },
+    rarity: "rare", points: 50 },
+  { id: 113, name: "Jason Gillespie", country: "Australia", countryCode: "AU", role: "Bowler", era: "1996-2006",
+    stats: { batting_avg: 19.00, strike_rate: 48.50, centuries: 0, total_runs: 640, wickets: 429, catches: 41 },
+    rarity: "rare", points: 50 },
+  { id: 114, name: "Travis Head", country: "Australia", countryCode: "AU", role: "Batsman", era: "2018-present",
+    stats: { batting_avg: 48.20, strike_rate: 91.50, centuries: 10, total_runs: 4800, wickets: 5, catches: 64 },
+    rarity: "rare", points: 50 },
+  { id: 115, name: "Josh Hazlewood", country: "Australia", countryCode: "AU", role: "Bowler", era: "2014-present",
+    stats: { batting_avg: 20.10, strike_rate: 52.30, centuries: 0, total_runs: 680, wickets: 310, catches: 32 },
+    rarity: "rare", points: 50 },
+  { id: 116, name: "Cameron Green", country: "Australia", countryCode: "AU", role: "All-Rounder", era: "2020-present",
+    stats: { batting_avg: 36.50, strike_rate: 98.20, centuries: 4, total_runs: 2800, wickets: 85, catches: 38 },
+    rarity: "common", points: 25 },
+
+  // England
+  { id: 117, name: "Nasser Hussain", country: "England", countryCode: "GB", role: "Batsman", era: "1990-2004",
+    stats: { batting_avg: 37.18, strike_rate: 61.50, centuries: 14, total_runs: 14103, wickets: 3, catches: 130 },
+    rarity: "rare", points: 50 },
+  { id: 118, name: "Marcus Trescothick", country: "England", countryCode: "GB", role: "Batsman", era: "2000-2006",
+    stats: { batting_avg: 43.79, strike_rate: 78.90, centuries: 14, total_runs: 9913, wickets: 3, catches: 122 },
+    rarity: "rare", points: 50 },
+  { id: 119, name: "Jonny Bairstow", country: "England", countryCode: "GB", role: "WK-Batsman", era: "2011-present",
+    stats: { batting_avg: 40.70, strike_rate: 89.30, centuries: 16, total_runs: 11880, wickets: 0, catches: 220 },
+    rarity: "rare", points: 50 },
+  { id: 120, name: "Chris Woakes", country: "England", countryCode: "GB", role: "All-Rounder", era: "2011-present",
+    stats: { batting_avg: 30.45, strike_rate: 73.50, centuries: 2, total_runs: 4100, wickets: 295, catches: 65 },
+    rarity: "rare", points: 50 },
+  { id: 121, name: "Moeen Ali", country: "England", countryCode: "GB", role: "All-Rounder", era: "2014-present",
+    stats: { batting_avg: 28.90, strike_rate: 88.40, centuries: 6, total_runs: 6200, wickets: 249, catches: 88 },
+    rarity: "rare", points: 50 },
+  { id: 122, name: "Harry Brook", country: "England", countryCode: "GB", role: "Batsman", era: "2022-present",
+    stats: { batting_avg: 61.30, strike_rate: 98.60, centuries: 8, total_runs: 3800, wickets: 0, catches: 45 },
+    rarity: "rare", points: 50 },
+
+  // Pakistan
+  { id: 123, name: "Abdul Qadir", country: "Pakistan", countryCode: "PK", role: "Bowler", era: "1977-1993",
+    stats: { batting_avg: 19.05, strike_rate: 44.90, centuries: 0, total_runs: 665, wickets: 368, catches: 34 },
+    rarity: "epic", points: 75 },
+  { id: 124, name: "Mushtaq Ahmed", country: "Pakistan", countryCode: "PK", role: "Bowler", era: "1992-2004",
+    stats: { batting_avg: 16.54, strike_rate: 43.20, centuries: 0, total_runs: 666, wickets: 334, catches: 30 },
+    rarity: "rare", points: 50 },
+  { id: 125, name: "Mohammad Rizwan", country: "Pakistan", countryCode: "PK", role: "WK-Batsman", era: "2016-present",
+    stats: { batting_avg: 48.30, strike_rate: 84.70, centuries: 10, total_runs: 8200, wickets: 0, catches: 210 },
+    rarity: "rare", points: 50 },
+  { id: 126, name: "Shaheen Afridi", country: "Pakistan", countryCode: "PK", role: "Bowler", era: "2018-present",
+    stats: { batting_avg: 18.50, strike_rate: 45.60, centuries: 0, total_runs: 520, wickets: 250, catches: 28 },
+    rarity: "rare", points: 50 },
+  { id: 127, name: "Shoaib Malik", country: "Pakistan", countryCode: "PK", role: "All-Rounder", era: "1999-2022",
+    stats: { batting_avg: 38.12, strike_rate: 87.00, centuries: 9, total_runs: 14000, wickets: 156, catches: 95 },
+    rarity: "rare", points: 50 },
+
+  // West Indies
+  { id: 128, name: "Desmond Haynes", country: "West Indies", countryCode: "WI", role: "Batsman", era: "1978-1994",
+    stats: { batting_avg: 42.29, strike_rate: 65.80, centuries: 17, total_runs: 14847, wickets: 0, catches: 128 },
+    rarity: "rare", points: 50 },
+  { id: 129, name: "Carl Hooper", country: "West Indies", countryCode: "WI", role: "All-Rounder", era: "1987-2003",
+    stats: { batting_avg: 36.46, strike_rate: 79.50, centuries: 13, total_runs: 15149, wickets: 193, catches: 115 },
+    rarity: "rare", points: 50 },
+  { id: 130, name: "Dwayne Bravo", country: "West Indies", countryCode: "WI", role: "All-Rounder", era: "2004-2021",
+    stats: { batting_avg: 31.40, strike_rate: 93.80, centuries: 3, total_runs: 9000, wickets: 257, catches: 75 },
+    rarity: "rare", points: 50 },
+  { id: 131, name: "Rohan Kanhai", country: "West Indies", countryCode: "WI", role: "Batsman", era: "1957-1974",
+    stats: { batting_avg: 47.53, strike_rate: 60.00, centuries: 15, total_runs: 11182, wickets: 0, catches: 119 },
+    rarity: "epic", points: 75 },
+  { id: 132, name: "Nicholas Pooran", country: "West Indies", countryCode: "WI", role: "WK-Batsman", era: "2018-present",
+    stats: { batting_avg: 34.50, strike_rate: 125.60, centuries: 4, total_runs: 5200, wickets: 0, catches: 155 },
+    rarity: "rare", points: 50 },
+
+  // Sri Lanka
+  { id: 133, name: "Aravinda de Silva", country: "Sri Lanka", countryCode: "LK", role: "All-Rounder", era: "1984-2003",
+    stats: { batting_avg: 42.97, strike_rate: 83.40, centuries: 29, total_runs: 17952, wickets: 106, catches: 122 },
+    rarity: "epic", points: 75 },
+  { id: 134, name: "Rangana Herath", country: "Sri Lanka", countryCode: "LK", role: "Bowler", era: "1999-2018",
+    stats: { batting_avg: 17.38, strike_rate: 44.10, centuries: 0, total_runs: 916, wickets: 609, catches: 40 },
+    rarity: "rare", points: 50 },
+  { id: 135, name: "Dimuth Karunaratne", country: "Sri Lanka", countryCode: "LK", role: "Batsman", era: "2012-present",
+    stats: { batting_avg: 40.20, strike_rate: 65.50, centuries: 16, total_runs: 11800, wickets: 0, catches: 98 },
+    rarity: "rare", points: 50 },
+  { id: 136, name: "Suranga Lakmal", country: "Sri Lanka", countryCode: "LK", role: "Bowler", era: "2009-2022",
+    stats: { batting_avg: 18.20, strike_rate: 43.50, centuries: 0, total_runs: 795, wickets: 317, catches: 32 },
+    rarity: "common", points: 25 },
+
+  // South Africa
+  { id: 137, name: "Kagiso Rabada", country: "South Africa", countryCode: "ZA", role: "Bowler", era: "2014-present",
+    stats: { batting_avg: 24.20, strike_rate: 55.40, centuries: 0, total_runs: 1520, wickets: 450, catches: 50 },
+    rarity: "epic", points: 75 },
+  { id: 138, name: "Alan Donald", country: "South Africa", countryCode: "ZA", role: "Bowler", era: "1992-2003",
+    stats: { batting_avg: 19.79, strike_rate: 47.20, centuries: 0, total_runs: 1012, wickets: 617, catches: 52 },
+    rarity: "epic", points: 75 },
+  { id: 139, name: "Lance Klusener", country: "South Africa", countryCode: "ZA", role: "All-Rounder", era: "1996-2004",
+    stats: { batting_avg: 41.10, strike_rate: 103.00, centuries: 4, total_runs: 4606, wickets: 192, catches: 45 },
+    rarity: "rare", points: 50 },
+  { id: 140, name: "Temba Bavuma", country: "South Africa", countryCode: "ZA", role: "Batsman", era: "2014-present",
+    stats: { batting_avg: 40.80, strike_rate: 76.50, centuries: 7, total_runs: 6800, wickets: 0, catches: 88 },
+    rarity: "rare", points: 50 },
+  { id: 141, name: "Imran Tahir", country: "South Africa", countryCode: "ZA", role: "Bowler", era: "2011-2019",
+    stats: { batting_avg: 20.50, strike_rate: 45.80, centuries: 0, total_runs: 520, wickets: 247, catches: 28 },
+    rarity: "rare", points: 50 },
+
+  // New Zealand
+  { id: 142, name: "Chris Cairns", country: "New Zealand", countryCode: "NZ", role: "All-Rounder", era: "1989-2004",
+    stats: { batting_avg: 33.53, strike_rate: 90.80, centuries: 5, total_runs: 9629, wickets: 396, catches: 93 },
+    rarity: "rare", points: 50 },
+  { id: 143, name: "Daniel Vettori", country: "New Zealand", countryCode: "NZ", role: "All-Rounder", era: "1997-2014",
+    stats: { batting_avg: 30.03, strike_rate: 58.60, centuries: 6, total_runs: 10143, wickets: 705, catches: 99 },
+    rarity: "epic", points: 75 },
+  { id: 144, name: "Stephen Fleming", country: "New Zealand", countryCode: "NZ", role: "Batsman", era: "1994-2008",
+    stats: { batting_avg: 40.06, strike_rate: 72.10, centuries: 9, total_runs: 14920, wickets: 1, catches: 171 },
+    rarity: "rare", points: 50 },
+  { id: 145, name: "Devon Conway", country: "New Zealand", countryCode: "NZ", role: "WK-Batsman", era: "2021-present",
+    stats: { batting_avg: 49.80, strike_rate: 83.60, centuries: 6, total_runs: 4200, wickets: 0, catches: 95 },
+    rarity: "rare", points: 50 },
+
+  // Bangladesh
+  { id: 146, name: "Tamim Iqbal", country: "Bangladesh", countryCode: "BD", role: "Batsman", era: "2007-2023",
+    stats: { batting_avg: 38.97, strike_rate: 78.30, centuries: 17, total_runs: 14600, wickets: 0, catches: 75 },
+    rarity: "rare", points: 50 },
+  { id: 147, name: "Mashrafe Mortaza", country: "Bangladesh", countryCode: "BD", role: "Bowler", era: "2001-2020",
+    stats: { batting_avg: 17.50, strike_rate: 56.40, centuries: 0, total_runs: 2700, wickets: 619, catches: 40 },
+    rarity: "rare", points: 50 },
+  { id: 148, name: "Mushfiqur Rahim", country: "Bangladesh", countryCode: "BD", role: "WK-Batsman", era: "2005-present",
+    stats: { batting_avg: 38.80, strike_rate: 72.50, centuries: 10, total_runs: 14200, wickets: 0, catches: 380 },
+    rarity: "rare", points: 50 },
+
+  // Afghanistan
+  { id: 149, name: "Mohammad Nabi", country: "Afghanistan", countryCode: "AF", role: "All-Rounder", era: "2009-present",
+    stats: { batting_avg: 26.60, strike_rate: 91.00, centuries: 0, total_runs: 5800, wickets: 290, catches: 65 },
+    rarity: "rare", points: 50 },
+  { id: 150, name: "Mujeeb Ur Rahman", country: "Afghanistan", countryCode: "AF", role: "Bowler", era: "2017-present",
+    stats: { batting_avg: 12.50, strike_rate: 37.80, centuries: 0, total_runs: 500, wickets: 200, catches: 22 },
+    rarity: "rare", points: 50 },
+
+  // More Pakistan
+  { id: 151, name: "Saqlain Mushtaq", country: "Pakistan", countryCode: "PK", role: "Bowler", era: "1995-2004",
+    stats: { batting_avg: 20.10, strike_rate: 48.50, centuries: 0, total_runs: 1060, wickets: 496, catches: 38 },
+    rarity: "rare", points: 50 },
+
+  // Zimbabwe
+  { id: 152, name: "Heath Streak", country: "Zimbabwe", countryCode: "ZW", role: "All-Rounder", era: "1993-2005",
+    stats: { batting_avg: 32.97, strike_rate: 72.30, centuries: 1, total_runs: 6740, wickets: 519, catches: 60 },
+    rarity: "rare", points: 50 },
+
+  // Bangladesh
+  { id: 153, name: "Mustafizur Rahman", country: "Bangladesh", countryCode: "BD", role: "Bowler", era: "2015-present",
+    stats: { batting_avg: 13.20, strike_rate: 35.40, centuries: 0, total_runs: 380, wickets: 285, catches: 25 },
+    rarity: "rare", points: 50 },
+
+  // Ireland
+  { id: 154, name: "Paul Stirling", country: "Ireland", countryCode: "IE", role: "Batsman", era: "2008-present",
+    stats: { batting_avg: 37.20, strike_rate: 95.60, centuries: 14, total_runs: 8800, wickets: 42, catches: 68 },
+    rarity: "common", points: 25 },
+
+  // More India
+  { id: 155, name: "Suryakumar Yadav", country: "India", countryCode: "IN", role: "Batsman", era: "2021-present",
+    stats: { batting_avg: 46.10, strike_rate: 176.80, centuries: 9, total_runs: 4600, wickets: 0, catches: 42 },
+    rarity: "rare", points: 50 },
+
+  // More Australia
+  { id: 156, name: "Damien Martyn", country: "Australia", countryCode: "AU", role: "Batsman", era: "1992-2007",
+    stats: { batting_avg: 46.37, strike_rate: 82.10, centuries: 13, total_runs: 13595, wickets: 0, catches: 130 },
+    rarity: "rare", points: 50 }
 ];
 
 module.exports = cricketers;

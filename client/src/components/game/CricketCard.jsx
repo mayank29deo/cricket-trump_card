@@ -66,7 +66,11 @@ const COUNTRY_FLAGS = {
   PK: '🇵🇰',
   GB: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
   LK: '🇱🇰',
-  NZ: '🇳🇿'
+  NZ: '🇳🇿',
+  BD: '🇧🇩',
+  AF: '🇦🇫',
+  ZW: '🇿🇼',
+  IE: '🇮🇪'
 }
 
 function getAvatarColor(name) {
