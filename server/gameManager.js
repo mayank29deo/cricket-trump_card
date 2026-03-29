@@ -109,9 +109,19 @@ function startGame(roomCode) {
   if (!room) return { error: 'Room not found' };
   if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-  // Pick deck based on room setting, shuffle all 104, deal 52
+  // Pick deck based on room setting, shuffle all 104, deduplicate by id, deal 52
   const deck = DECKS[room.deckType] || cricketers;
-  const gameCards = shuffleArray(deck).slice(0, 52).map(freshCard);
+  const shuffled = shuffleArray(deck);
+  const seen = new Set();
+  const unique = shuffled.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+  const gameCards = unique.slice(0, 52).map(card => {
+    const fc = freshCard(card);
+    // Burn ipl_economy for pure batsmen (wickets < 1) so they can't pick economy
+    if (room.deckType === 'ipl' && (card.stats.ipl_wickets || 0) < 1) {
+      fc.usedStats.push('ipl_economy');
+    }
+    return fc;
+  });
 
   const playerCount = room.players.length;
   const cardsPerPlayer = Math.floor(52 / playerCount);
@@ -260,17 +270,29 @@ function autoSelectOpponents(roomCode) {
     p => p.isActive && p.hand.length > 0 && p.id !== activePlayer.id
   );
 
+  const lowerIsBetter = stat === 'ipl_economy';
+
   activeOpponents.forEach(player => {
     if (!room.opponentSelections[player.id]) {
       let bestCard = player.hand[0];
-      let bestValue = player.hand[0].stats[stat] || 0;
+      let bestValue = lowerIsBetter ? Infinity : -Infinity;
+
       player.hand.forEach(card => {
         const val = card.stats[stat] || 0;
-        if (val > bestValue) {
-          bestValue = val;
-          bestCard = card;
+        if (lowerIsBetter) {
+          // Pick lowest non-zero value; if all zero, fall back to first card
+          if (val > 0 && val < bestValue) {
+            bestValue = val;
+            bestCard = card;
+          }
+        } else {
+          if (val > bestValue) {
+            bestValue = val;
+            bestCard = card;
+          }
         }
       });
+
       room.opponentSelections[player.id] = { card: bestCard, cardId: bestCard.id };
     }
   });
@@ -298,13 +320,20 @@ function resolveRound(roomCode) {
     roundCards[pid] = { card, statValue: card.stats[stat] || 0 };
   });
 
-  // Find max value
-  let maxValue = -Infinity;
-  Object.values(roundCards).forEach(({ statValue }) => {
-    if (statValue > maxValue) maxValue = statValue;
-  });
+  // For ipl_economy: lower non-zero value wins; for all others: highest wins
+  const lowerIsBetter = stat === 'ipl_economy';
+  let targetValue;
+  if (lowerIsBetter) {
+    const nonZeroValues = Object.values(roundCards).map(({ statValue }) => statValue).filter(v => v > 0);
+    targetValue = nonZeroValues.length > 0 ? Math.min(...nonZeroValues) : 0;
+  } else {
+    targetValue = Math.max(...Object.values(roundCards).map(({ statValue }) => statValue));
+  }
 
-  const winners = Object.entries(roundCards).filter(([, { statValue }]) => statValue === maxValue);
+  const winners = Object.entries(roundCards).filter(([, { statValue }]) => {
+    if (lowerIsBetter) return statValue === targetValue && statValue > 0;
+    return statValue === targetValue;
+  });
   const playedCards = Object.values(roundCards).map(({ card }) => card);
 
   let winnerId = null;
