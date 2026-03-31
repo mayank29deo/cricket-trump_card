@@ -5,7 +5,7 @@ import GameTimer from '../components/game/GameTimer'
 import Button from '../components/ui/Button'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
-import { connectSocket, getSocket } from '../lib/socket'
+import { connectSocket, getSocket, safeEmit } from '../lib/socket'
 
 const STAT_LABELS = {
   batting_avg: 'Bat Avg',
@@ -507,13 +507,17 @@ export default function Game() {
 
     socket.on('connect', () => {
       setConnected(true)
-      if (!roomData || roomData?.code !== roomCode) {
-        setJoinPrompt(true)
-        socket.emit('join_room', {
-          roomCode,
-          player: { id: user.id, name: user.name }
-        })
-      }
+      // Always re-request state on every (re)connect.
+      // The server detects returning players and sends their full current hand + phase,
+      // so this is safe on initial connect AND on cellular reconnects.
+      socket.emit('join_room', {
+        roomCode,
+        player: { id: user.id, name: user.name }
+      })
+    })
+
+    socket.on('disconnect', () => {
+      setConnected(false)
     })
 
     socket.on('room_joined', ({ room, myId: id }) => {
@@ -576,14 +580,13 @@ export default function Game() {
       setTimeout(() => setError(''), 4000)
     })
 
+    // If already connected when the component mounts, fire the sync immediately.
     if (socket.connected) {
       setConnected(true)
-      if (!roomData || roomData?.code !== roomCode) {
-        socket.emit('join_room', {
-          roomCode,
-          player: { id: user.id, name: user.name }
-        })
-      }
+      socket.emit('join_room', {
+        roomCode,
+        player: { id: user.id, name: user.name }
+      })
     }
 
     return () => {
@@ -615,8 +618,9 @@ export default function Game() {
   // Active player taps a stat after picking a card
   const handleSelectStat = useCallback((stat) => {
     if (!isActivePlayer || !selectedCard) return
-    const socket = getSocket()
-    socket.emit('select_card_stat', {
+    // Use safeEmit: if momentarily disconnected (cellular blip) it queues
+    // the emit and fires once the socket reconnects, so no silent drop.
+    safeEmit('select_card_stat', {
       roomCode,
       playerId: myId,
       cardId: selectedCard.id,
@@ -629,8 +633,7 @@ export default function Game() {
   // Opponent picks their card to compete
   const handleOpponentCardPick = useCallback((card) => {
     if (isActivePlayer || gamePhase !== 'opponents_selecting' || hasSubmittedCard) return
-    const socket = getSocket()
-    socket.emit('select_opponent_card', {
+    safeEmit('select_opponent_card', {
       roomCode,
       playerId: myId,
       cardId: card.id
@@ -836,6 +839,13 @@ export default function Game() {
 
   return (
     <div className="min-h-screen stadium-bg flex flex-col overflow-hidden">
+
+      {/* ── Reconnecting banner (cellular drop indicator) ── */}
+      {!connected && (
+        <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-amber-900/80 border-b border-amber-600/50 text-amber-300 text-xs font-semibold animate-pulse">
+          <span>📶</span> Reconnecting… your turn will be held
+        </div>
+      )}
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-pitch-800/60 backdrop-blur-sm">

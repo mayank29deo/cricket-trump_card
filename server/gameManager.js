@@ -70,6 +70,7 @@ function createRoom(hostPlayer, timeOption, deckType) {
     roundTimeSeconds: 0,
     activePhaseSeconds: 0,
     opponentPhaseSeconds: 0,
+    currentPhaseTimeLeft: 0,   // updated every tick so rejoiners get accurate timer
     createdAt: new Date()
   };
 

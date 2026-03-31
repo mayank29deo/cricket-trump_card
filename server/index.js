@@ -12,9 +12,13 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-  pingInterval: 5000,
-  pingTimeout: 10000,
-  upgradeTimeout: 10000,  // give mobile connections more time to upgrade to WebSocket
+  // pingInterval: how often the server pings each client.
+  // pingTimeout: how long to wait for a pong before declaring disconnect.
+  // Increased from 5s/10s to 8s/20s — cellular networks can spike to 3-5s
+  // latency, so a 10s timeout was causing false disconnects mid-game.
+  pingInterval: 8000,
+  pingTimeout: 20000,
+  upgradeTimeout: 15000,
 });
 
 app.use(cors({ origin: '*' }));
@@ -173,6 +177,8 @@ function startActivePhaseTimer(roomCode) {
       clearInterval(tickInterval);
       return;
     }
+    // Keep room in sync so reconnecting players get the real remaining time
+    currentRoom.currentPhaseTimeLeft = phaseTimeLeft;
     io.to(roomCode).emit('phase_timer_tick', { phaseTimeLeft, phase: 'active_selecting' });
   }, 1000);
 
@@ -224,6 +230,8 @@ function startOpponentPhaseTimer(roomCode) {
       clearInterval(tickInterval);
       return;
     }
+    // Keep room in sync so reconnecting players get the real remaining time
+    currentRoom.currentPhaseTimeLeft = phaseTimeLeft;
     io.to(roomCode).emit('phase_timer_tick', { phaseTimeLeft, phase: 'opponents_selecting' });
   }, 1000);
 
@@ -373,15 +381,20 @@ io.on('connection', (socket) => {
             myId: player.id,
             gameState: buildGameStatePublic(room)
           });
-          // Also re-send current phase so they know whose turn it is
+          // Also re-send current phase so they know whose turn it is.
+          // Use currentPhaseTimeLeft (updated every tick) so the timer doesn't
+          // jump back to the full value on reconnect.
           const activePlayerId = room.players[room.activePlayerIndex]?.id;
+          const remainingTime = room.currentPhaseTimeLeft > 0
+            ? room.currentPhaseTimeLeft
+            : (room.gamePhase === 'active_selecting' ? room.activePhaseSeconds : room.opponentPhaseSeconds);
           socket.emit('phase_changed', {
             phase: room.gamePhase,
             activePlayerId,
             activeCard: room.activePlayerCard || null,
             stat: room.activeStat || null,
             statValue: room.activePlayerCard ? room.activePlayerCard.stats[room.activeStat] : null,
-            phaseTimeLeft: room.gamePhase === 'active_selecting' ? room.activePhaseSeconds : room.opponentPhaseSeconds
+            phaseTimeLeft: remainingTime
           });
           console.log(`Player ${player.name} rejoined mid-game in room ${roomCode}`);
         } else {
