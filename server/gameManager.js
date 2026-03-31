@@ -34,6 +34,83 @@ function calcHandScore(hand) {
   return hand.reduce((sum, c) => sum + (c.points || 25), 0);
 }
 
+/**
+ * Balanced deal — each player gets roughly equal legendary/epic/rare cards
+ * with intentional ±1 variation per tier to keep games interesting.
+ *
+ * Algorithm:
+ *  1. Bucket the full deck into rarity tiers, shuffle within each tier.
+ *  2. Compute per-player targets: base allocation ± random bonus of 1 for
+ *     legendary and epic, compensated by reducing rare by the same amount.
+ *  3. Pull cards tier-by-tier for each player; fall back to rare if a
+ *     higher tier runs dry.
+ *  4. Shuffle each player's final hand so card order is random.
+ */
+function balancedDeal(fullDeck, playerCount, cardsPerPlayer) {
+  // Bucket ALL cards by rarity, shuffle within each bucket so random players
+  // within a tier are drawn, not always the same top-N.
+  const buckets = { legendary: [], epic: [], rare: [], common: [] };
+  const temp    = { legendary: [], epic: [], rare: [], common: [] };
+  fullDeck.forEach(c => {
+    const tier = (c.rarity in temp) ? c.rarity : 'common';
+    temp[tier].push(c);
+  });
+  Object.keys(buckets).forEach(t => { buckets[t] = shuffleArray(temp[t]); });
+
+  // Base per-player allocation (sums exactly to cardsPerPlayer)
+  const baseleg = Math.max(2, Math.floor(cardsPerPlayer * 0.22));
+  const baseepc = Math.max(2, Math.floor(cardsPerPlayer * 0.28));
+  const basecom = Math.floor(cardsPerPlayer * 0.04);
+  const baserar = cardsPerPlayer - baseleg - baseepc - basecom;
+
+  // Generate per-player targets with ±1 variation on legendary and epic
+  const targets = Array.from({ length: playerCount }, () => {
+    const lb = Math.random() < 0.45 ? 1 : 0;   // ~45% chance +1 legendary
+    const eb = Math.random() < 0.45 ? 1 : 0;   // ~45% chance +1 epic
+    const leg = baseleg + lb;
+    const epc = baseepc + eb;
+    const com = basecom;
+    const rar = Math.max(0, cardsPerPlayer - leg - epc - com);
+    return { legendary: leg, epic: epc, rare: rar, common: com };
+  });
+
+  // Cap targets if a bucket is too shallow (e.g. very small decks)
+  for (const tier of ['legendary', 'epic']) {
+    const base = tier === 'legendary' ? baseleg : baseepc;
+    let excess = targets.reduce((s, t) => s + t[tier], 0) - buckets[tier].length;
+    for (const t of targets) {
+      if (excess <= 0) break;
+      if (t[tier] > base) { t[tier]--; t.rare++; excess--; }
+    }
+    // If still short, reduce base allocations
+    for (const t of targets) {
+      if (excess <= 0) break;
+      if (t[tier] > 0) { t[tier]--; t.rare++; excess--; }
+    }
+  }
+
+  // Draw cards from buckets for each player
+  const hands = Array.from({ length: playerCount }, () => []);
+  for (let p = 0; p < playerCount; p++) {
+    for (const tier of ['legendary', 'epic', 'rare', 'common']) {
+      const need  = targets[p][tier];
+      const taken = buckets[tier].splice(0, Math.min(need, buckets[tier].length));
+      hands[p].push(...taken);
+      // Shortfall: bucket ran dry — top up from rare, then common
+      let gap = need - taken.length;
+      for (const fallback of ['rare', 'common', 'epic', 'legendary']) {
+        if (gap <= 0) break;
+        const fill = buckets[fallback].splice(0, Math.min(gap, buckets[fallback].length));
+        hands[p].push(...fill);
+        gap -= fill.length;
+      }
+    }
+  }
+
+  // Shuffle each hand so the player doesn't always start with legendaries on top
+  return hands.map(h => shuffleArray(h));
+}
+
 function createRoom(hostPlayer, timeOption, deckType) {
   let code;
   do {
@@ -110,31 +187,32 @@ function startGame(roomCode) {
   if (!room) return { error: 'Room not found' };
   if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-  // Pick deck based on room setting, shuffle, deduplicate, deal dynamic count
+  // Deduplicate deck
   const deck = DECKS[room.deckType] || cricketers;
-  const shuffled = shuffleArray(deck);
   const seen = new Set();
-  const unique = shuffled.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
-  // 2 players → 26 cards each (52 total); 3–6 players → 18 cards each
+  const unique = deck.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+
+  // 2 players → 26 cards each; 3–6 players → 18 cards each
   const playerCount = room.players.length;
   const cardsPerPlayer = playerCount <= 2 ? 26 : 18;
-  const totalCardsNeeded = cardsPerPlayer * playerCount;
-  const gameCards = unique.slice(0, totalCardsNeeded).map(card => {
-    const fc = freshCard(card);
-    // Burn ipl_economy for pure batsmen (wickets < 1) so they can't pick economy
-    if (room.deckType === 'ipl' && (card.stats.ipl_wickets || 0) < 1) {
-      fc.usedStats.push('ipl_economy');
-    }
-    return fc;
-  });
+
+  // Balanced deal: each player gets a fair rarity spread with ±1 variation
+  const dealtHands = balancedDeal(unique, playerCount, cardsPerPlayer);
 
   room.players.forEach((player, index) => {
-    player.hand = gameCards.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer);
+    player.hand = dealtHands[index].map(card => {
+      const fc = freshCard(card);
+      // Burn ipl_economy for pure batsmen so they can't exploit it
+      if (room.deckType === 'ipl' && (card.stats.ipl_wickets || 0) < 1) {
+        fc.usedStats.push('ipl_economy');
+      }
+      return fc;
+    });
     player.score = calcHandScore(player.hand);
     player.isActive = true;
   });
 
-  room.neutralPile = gameCards.slice(playerCount * cardsPerPlayer);
+  room.neutralPile = [];
   room.activePlayerIndex = 0;
   room.currentRound = 0;
   room.roundCards = {};
