@@ -297,46 +297,60 @@ function autoSelectActive(roomCode) {
   const activePlayer = room.players[room.activePlayerIndex];
   if (!activePlayer || activePlayer.hand.length === 0) return { error: 'Active player has no cards' };
 
-  const validStats = ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
+  const isIPL = room.deckType === 'ipl';
+  const primaryStat = isIPL ? 'ipl_runs' : 'total_runs';
+  const deckStats = isIPL
+    ? ['ipl_runs', 'ipl_avg', 'ipl_sr', 'ipl_wickets', 'ipl_economy', 'ipl_matches']
+    : ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
 
+  // First choice: best card by primary runs stat, declared as the stat
   let bestCard = null;
-  let bestStat = null;
   let bestValue = -Infinity;
 
   activePlayer.hand.forEach(card => {
-    validStats.forEach(s => {
-      // Skip burned stats
+    if (card.usedStats && card.usedStats.includes(primaryStat)) return;
+    const val = card.stats[primaryStat] || 0;
+    if (val > bestValue) {
+      bestValue = val;
+      bestCard = card;
+    }
+  });
+
+  if (bestCard) {
+    return selectCardAndStat(roomCode, activePlayer.id, bestCard.id, primaryStat);
+  }
+
+  // Fallback: runs stat burned on all cards — pick best card+stat combo across deck stats
+  let fallbackCard = null;
+  let fallbackStat = null;
+  let fallbackValue = -Infinity;
+
+  activePlayer.hand.forEach(card => {
+    deckStats.forEach(s => {
       if (card.usedStats && card.usedStats.includes(s)) return;
       const val = card.stats[s] || 0;
-      if (val > bestValue) {
-        bestValue = val;
-        bestCard = card;
-        bestStat = s;
+      if (val > fallbackValue) {
+        fallbackValue = val;
+        fallbackCard = card;
+        fallbackStat = s;
       }
     });
   });
 
-  // Fallback: all stats burned on best cards — find any available combo
-  if (!bestCard) {
-    for (const card of activePlayer.hand) {
-      for (const s of validStats) {
-        if (!card.usedStats || !card.usedStats.includes(s)) {
-          bestCard = card;
-          bestStat = s;
-          break;
-        }
+  if (fallbackCard) {
+    return selectCardAndStat(roomCode, activePlayer.id, fallbackCard.id, fallbackStat);
+  }
+
+  // Last resort: all stats burned — pick first available combo
+  for (const card of activePlayer.hand) {
+    for (const s of deckStats) {
+      if (!card.usedStats || !card.usedStats.includes(s)) {
+        return selectCardAndStat(roomCode, activePlayer.id, card.id, s);
       }
-      if (bestCard) break;
     }
   }
 
-  // Last resort: all stats burned on all cards — just pick first card/stat
-  if (!bestCard) {
-    bestCard = activePlayer.hand[0];
-    bestStat = validStats[0];
-  }
-
-  return selectCardAndStat(roomCode, activePlayer.id, bestCard.id, bestStat);
+  return selectCardAndStat(roomCode, activePlayer.id, activePlayer.hand[0].id, deckStats[0]);
 }
 
 function autoSelectOpponents(roomCode) {
