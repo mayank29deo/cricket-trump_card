@@ -30,10 +30,6 @@ function freshCard(card) {
 }
 
 /** Sum of card.points in a hand */
-function calcHandScore(hand) {
-  return hand.reduce((sum, c) => sum + (c.points || 25), 0);
-}
-
 /**
  * Balanced deal — each player gets roughly equal legendary/epic/rare cards
  * with intentional ±1 variation per tier to keep games interesting.
@@ -208,7 +204,7 @@ function startGame(roomCode) {
       }
       return fc;
     });
-    player.score = calcHandScore(player.hand);
+    player.score = 0;
     player.isActive = true;
   });
 
@@ -459,8 +455,6 @@ function resolveRound(roomCode) {
         winner.hand.push(...room.neutralPile.map(freshCard));
         room.neutralPile = [];
       }
-
-      winner.score = calcHandScore(winner.hand);
     }
   } else {
     // Tie: burn the stat on cards going to neutral pile too
@@ -470,12 +464,39 @@ function resolveRound(roomCode) {
     });
   }
 
-  // Recompute scores for all other players (hands changed)
-  room.players.forEach(player => {
-    if (player.id !== winnerId) {
-      player.score = calcHandScore(player.hand);
+  // ── Round points: rank all participants by stat value, award 10/8/6/4 ──
+  // Ties share the higher bracket (both get the higher points).
+  const ROUND_POINTS = [10, 8, 6, 4];
+  const participants = Object.entries(roundCards)
+    .map(([pid, { statValue }]) => ({ pid, statValue }));
+
+  // Sort: for lowerIsBetter, non-zero lowest first; otherwise highest first
+  participants.sort((a, b) => {
+    if (lowerIsBetter) {
+      if (a.statValue === 0 && b.statValue === 0) return 0;
+      if (a.statValue === 0) return 1;
+      if (b.statValue === 0) return -1;
+      return a.statValue - b.statValue;
     }
+    return b.statValue - a.statValue;
   });
+
+  const roundPointsAwarded = {};
+  let rank = 0;
+  for (let i = 0; i < participants.length; i++) {
+    // Tied with previous → same rank (same points bracket)
+    if (i > 0 && participants[i].statValue === participants[i - 1].statValue) {
+      // same rank as previous
+    } else {
+      rank = i;
+    }
+    const pts = ROUND_POINTS[rank] ?? 2; // 2 pts floor for 5th+ players
+    const player = room.players.find(p => p.id === participants[i].pid);
+    if (player) {
+      player.score += pts;
+      roundPointsAwarded[participants[i].pid] = pts;
+    }
+  }
 
   // Check eliminations
   room.players.forEach(player => {
@@ -538,7 +559,8 @@ function resolveRound(roomCode) {
       winnerId,
       isTie: winners.length > 1,
       neutralPileCount: room.neutralPile.length,
-      currentRound: room.currentRound
+      currentRound: room.currentRound,
+      roundPointsAwarded,
     },
     gameEnded,
     overallWinner: overallWinner

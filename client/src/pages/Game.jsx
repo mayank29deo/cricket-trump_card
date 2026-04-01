@@ -283,7 +283,7 @@ function StatPickerSheet({ card, statLabels, statIcons, onSelect, onClose }) {
 
 // ─── Round Battle Animation Overlay ──────────────────────────────────────────
 
-function BattleCard({ playerName, card, statKey, statValue, isWinner, isTie, slideFrom, phase }) {
+function BattleCard({ playerName, card, statKey, statValue, isWinner, isTie, slideFrom, phase, ptsAwarded }) {
   const entered = phase >= 1
   const decided = phase >= 2
 
@@ -352,6 +352,16 @@ function BattleCard({ playerName, card, statKey, statValue, isWinner, isTie, sli
       {isTie && decided && (
         <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>🤝 TIE</div>
       )}
+      {/* Points awarded badge */}
+      {decided && ptsAwarded != null && (
+        <div style={{
+          fontSize: 12, fontWeight: 800,
+          color: isWinner ? '#f59e0b' : '#94a3b8',
+          animation: 'popIn 0.3s cubic-bezier(0.34,1.56,0.64,1) 0.1s both',
+        }}>
+          +{ptsAwarded} pts
+        </div>
+      )}
     </div>
   )
 }
@@ -403,6 +413,7 @@ function RoundBattleOverlay({ result, players, myId, statLabels, statIcons, onDo
           const player = players.find(p => p.id === pid)
           const isWinner = pid === result.winnerId
           const slideFrom = i < Math.ceil(n / 2) ? 'left' : 'right'
+          const ptsAwarded = result.roundPointsAwarded?.[pid]
           return (
             <React.Fragment key={pid}>
               <BattleCard
@@ -414,6 +425,7 @@ function RoundBattleOverlay({ result, players, myId, statLabels, statIcons, onDo
                 isTie={result.isTie}
                 slideFrom={slideFrom}
                 phase={phase}
+                ptsAwarded={ptsAwarded}
               />
               {i < entries.length - 1 && phase >= 1 && (
                 <div style={{
@@ -441,7 +453,9 @@ function RoundBattleOverlay({ result, players, myId, statLabels, statIcons, onDo
           </div>
         ) : winnerName && (
           <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b', fontFamily: 'Rajdhani, sans-serif' }}>
-            {result.winnerId === myId ? '🏆 YOU TAKE THE CARDS!' : `🏆 ${winnerName} takes the cards!`}
+            {result.winnerId === myId
+              ? `🏆 YOU TAKE THE CARDS! +${result.roundPointsAwarded?.[myId] ?? 10} pts`
+              : `🏆 ${winnerName} takes the cards!`}
           </div>
         )}
       </div>
