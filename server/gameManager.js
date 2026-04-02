@@ -466,7 +466,15 @@ function resolveRound(roomCode) {
 
   // ── Round points: rank all participants by stat value, award 10/8/6/4 ──
   // Ties share the higher bracket (both get the higher points).
-  const ROUND_POINTS = [10, 8, 6, 4];
+  const playerCount = Object.keys(roundCards).length;
+  const ROUND_POINTS_BY_COUNT = {
+    2: [10, 0],
+    3: [10, 7, 5],
+    4: [10, 7, 5, 2],
+    5: [10, 8, 6, 4, 2],
+    6: [10, 8, 6, 4, 2, 0],
+  };
+  const ROUND_POINTS = ROUND_POINTS_BY_COUNT[playerCount] || [10, 8, 6, 4, 2, 0];
   const participants = Object.entries(roundCards)
     .map(([pid, { statValue }]) => ({ pid, statValue }));
 
@@ -490,7 +498,7 @@ function resolveRound(roomCode) {
     } else {
       rank = i;
     }
-    const pts = ROUND_POINTS[rank] ?? 2; // 2 pts floor for 5th+ players
+    const pts = ROUND_POINTS[rank] ?? 0;
     const player = room.players.find(p => p.id === participants[i].pid);
     if (player) {
       player.score += pts;
