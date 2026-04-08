@@ -450,9 +450,9 @@ function resolveRound(roomCode) {
 
       winner.hand.push(...cardsForWinner);
 
-      // Neutral pile goes to winner fresh
+      // Neutral pile goes to winner — preserve usedStats history from prior rounds
       if (room.neutralPile.length > 0) {
-        winner.hand.push(...room.neutralPile.map(freshCard));
+        winner.hand.push(...room.neutralPile);
         room.neutralPile = [];
       }
     }
@@ -612,7 +612,7 @@ function leaveRoom(roomCode, playerId) {
   const gameIsActive = room.gamePhase === 'active_selecting' || room.gamePhase === 'opponents_selecting';
 
   if (gameIsActive && player.hand.length > 0) {
-    room.neutralPile.push(...player.hand.map(freshCard));
+    room.neutralPile.push(...player.hand);
     player.hand = [];
     player.score = 0;
   }
