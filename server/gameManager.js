@@ -364,13 +364,16 @@ function autoSelectOpponents(roomCode) {
 
   activeOpponents.forEach(player => {
     if (!room.opponentSelections[player.id]) {
-      let bestCard = player.hand[0];
+      // Only consider cards where this stat is NOT burned
+      const eligible = player.hand.filter(c => !c.usedStats || !c.usedStats.includes(stat));
+      const pool = eligible.length > 0 ? eligible : player.hand; // fallback if all burned
+
+      let bestCard = pool[0];
       let bestValue = lowerIsBetter ? Infinity : -Infinity;
 
-      player.hand.forEach(card => {
+      pool.forEach(card => {
         const val = card.stats[stat] || 0;
         if (lowerIsBetter) {
-          // Pick lowest non-zero value; if all zero, fall back to first card
           if (val > 0 && val < bestValue) {
             bestValue = val;
             bestCard = card;
@@ -401,13 +404,15 @@ function resolveRound(roomCode) {
   if (!activeCard || !stat) return { error: 'No active card or stat selected' };
 
   // Build roundCards: { playerId: { card, statValue } }
+  // If the stat is burned on a card, its value counts as 0
   const roundCards = {};
+  const statVal = (card) => (card.usedStats && card.usedStats.includes(stat)) ? 0 : (card.stats[stat] || 0);
   roundCards[activePlayer.id] = {
     card: activeCard,
-    statValue: activeCard.stats[stat] || 0
+    statValue: statVal(activeCard)
   };
   Object.entries(room.opponentSelections).forEach(([pid, { card }]) => {
-    roundCards[pid] = { card, statValue: card.stats[stat] || 0 };
+    roundCards[pid] = { card, statValue: statVal(card) };
   });
 
   // For ipl_economy: lower non-zero value wins; for all others: highest wins
