@@ -214,11 +214,11 @@ function startGame(roomCode) {
   room.roundCards = {};
   room.timeLeft = room.timeOption * 60;
 
-  // Dynamic round timer — each phase gets at least 24s
+  // Dynamic round timer — each phase gets at least 30s
   const rawRoundTime = Math.floor((room.timeOption * 60) / cardsPerPlayer);
-  room.roundTimeSeconds = Math.max(48, Math.min(70, rawRoundTime));
-  room.activePhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.55));
-  room.opponentPhaseSeconds = Math.max(24, Math.floor(room.roundTimeSeconds * 0.45));
+  room.roundTimeSeconds = Math.max(60, Math.min(80, rawRoundTime));
+  room.activePhaseSeconds = Math.max(30, Math.floor(room.roundTimeSeconds * 0.55));
+  room.opponentPhaseSeconds = Math.max(30, Math.floor(room.roundTimeSeconds * 0.45));
 
   room.activeCardId = null;
   room.activeStat = null;
