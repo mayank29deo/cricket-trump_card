@@ -167,15 +167,17 @@ function joinRoom(roomCode, player) {
   if (room.gamePhase !== 'waiting') return { error: 'Game already in progress' };
   if (room.players.length >= 6) return { error: 'Room is full' };
 
-  room.players.push({
+  const entry = {
     id: player.id,
     name: player.name,
     avatar: player.avatar || null,
     socketId: player.socketId,
     hand: [],
     score: 0,
-    isActive: true
-  });
+    isActive: true,
+  };
+  if (player.isBot) entry.isBot = true;
+  room.players.push(entry);
 
   return { room };
 }
