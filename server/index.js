@@ -56,7 +56,7 @@ function scheduleBotMove(roomCode) {
   const bot = gameManager.getBotPlayer(roomCode);
   if (!bot || !bot.isActive || bot.hand.length === 0) return;
 
-  const delay = 2000 + Math.floor(Math.random() * 3000); // 2-5s
+  const delay = 3000 + Math.floor(Math.random() * 4000); // 3-7s
 
   if (room.gamePhase === 'active_selecting') {
     const activePlayer = room.players[room.activePlayerIndex];
@@ -65,7 +65,8 @@ function scheduleBotMove(roomCode) {
         const currentRoom = gameManager.getRoom(roomCode);
         if (!currentRoom || currentRoom.gamePhase !== 'active_selecting') return;
 
-        const autoResult = gameManager.autoSelectActive(roomCode);
+        const pick = botPickCardAndStat(currentRoom, activePlayer);
+        const autoResult = gameManager.selectCardAndStat(roomCode, activePlayer.id, pick.cardId, pick.stat);
         if (autoResult.error) return;
 
         const { room: updatedRoom, activeCard, stat } = autoResult;
@@ -117,6 +118,67 @@ function scheduleBotMove(roomCode) {
       }
     }
   }
+}
+
+/**
+ * Bot picks a card + stat dynamically — rotates through different stats
+ * across rounds so it doesn't always pick runs.
+ * Strategy: for each available stat, find the best card, then randomly
+ * pick among the top 3 stat options weighted toward the strongest.
+ */
+function botPickCardAndStat(room, bot) {
+  const isIPL = room.deckType === 'ipl';
+  const deckStats = isIPL
+    ? ['ipl_runs', 'ipl_avg', 'ipl_sr', 'ipl_wickets', 'ipl_economy', 'ipl_matches']
+    : ['batting_avg', 'strike_rate', 'centuries', 'total_runs', 'wickets', 'catches'];
+
+  // For each stat, find the best eligible card and its value
+  const options = [];
+  deckStats.forEach(stat => {
+    const lowerIsBetter = stat === 'ipl_economy';
+    let bestCard = null;
+    let bestValue = lowerIsBetter ? Infinity : -Infinity;
+
+    bot.hand.forEach(card => {
+      if (card.usedStats && card.usedStats.includes(stat)) return;
+      const val = card.stats[stat] || 0;
+      if (lowerIsBetter) {
+        if (val > 0 && val < bestValue) { bestValue = val; bestCard = card; }
+      } else {
+        if (val > bestValue) { bestValue = val; bestCard = card; }
+      }
+    });
+
+    if (bestCard) {
+      options.push({ stat, card: bestCard, value: bestValue, lowerIsBetter });
+    }
+  });
+
+  if (options.length === 0) {
+    // All stats burned — fallback
+    return { cardId: bot.hand[0].id, stat: deckStats[0] };
+  }
+
+  // Sort by relative strength: higher-is-better by value desc, lower-is-better by value asc
+  options.sort((a, b) => {
+    if (a.lowerIsBetter && b.lowerIsBetter) return a.value - b.value;
+    if (a.lowerIsBetter) return 1; // push economy to end usually
+    if (b.lowerIsBetter) return -1;
+    return b.value - a.value;
+  });
+
+  // Weighted random pick from top options — 50% best, 30% second, 20% third
+  const weights = [0.50, 0.30, 0.20];
+  const roll = Math.random();
+  let cumulative = 0;
+  for (let i = 0; i < Math.min(options.length, weights.length); i++) {
+    cumulative += weights[i];
+    if (roll < cumulative) {
+      return { cardId: options[i].card.id, stat: options[i].stat };
+    }
+  }
+
+  return { cardId: options[0].card.id, stat: options[0].stat };
 }
 
 /** Pick the best card for a bot opponent to counter the announced stat */
