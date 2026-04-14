@@ -147,12 +147,13 @@ export default function Lobby() {
     socket.on('room_updated', ({ room }) => {
       setRoomData(room)
     })
-    socket.on('game_started', ({ myHand, myId: id, gameState }) => {
+    socket.on('game_started', ({ myHand, myId: id, gameState, roomCode: botRoomCode }) => {
+      const code = gameState.code || botRoomCode
       const store = useGameStore.getState()
-      store.setRoom(gameState.code, gameState, id)
+      store.setRoom(code, gameState, id)
       store.setMyHand(myHand)
       store.updateGameState(gameState)
-      navigate(`/game/${gameState.code}`)
+      navigate(`/game/${code}`)
     })
     socket.on('game_ended', ({ reason, overallWinner, players }) => {
       if (reason === 'rejoined_ended') {
@@ -282,6 +283,17 @@ export default function Lobby() {
     if (!user) return
     connectWithPreflight(() =>
       emitWithTimeout('create_room', {
+        player: { id: user.id, name: displayName },
+        timeOption,
+        deckType
+      })
+    )
+  }
+
+  const handlePlayBot = () => {
+    if (!user) return
+    connectWithPreflight(() =>
+      emitWithTimeout('create_bot_game', {
         player: { id: user.id, name: displayName },
         timeOption,
         deckType
@@ -749,6 +761,32 @@ export default function Lobby() {
                   <span className="flex items-center justify-center gap-2">
                     <span>🏏</span>
                     Create Room
+                  </span>
+                )}
+              </Button>
+
+              <div className="relative flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-slate-500 text-xs font-semibold tracking-wider">OR</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+
+              <Button
+                variant="secondary"
+                fullWidth
+                size="lg"
+                onClick={handlePlayBot}
+                disabled={isConnecting}
+              >
+                {isConnecting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="animate-spin">⟳</span>
+                    {connectingMsg}
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <span>🤖</span>
+                    Play vs Bot
                   </span>
                 )}
               </Button>

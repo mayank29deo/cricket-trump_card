@@ -4,6 +4,8 @@ const iplCricketers = require('./data/iplCricketers');
 
 const DECKS = { international: cricketers, ipl: iplCricketers };
 
+const BOT_NAMES = ['CricBot', 'TrumpBot', 'AutoPick', 'SixHitter', 'BowlBot', 'AllRounder'];
+
 const rooms = new Map();
 
 function generateRoomCode() {
@@ -665,6 +667,40 @@ function updatePlayerSocket(roomCode, playerId, socketId) {
   return room;
 }
 
+const BOT_ID_PREFIX = 'bot_';
+
+function makeBotPlayer() {
+  const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+  return {
+    id: BOT_ID_PREFIX + uuidv4().slice(0, 8),
+    name,
+    avatar: null,
+    socketId: null,
+    hand: [],
+    score: 0,
+    isActive: true,
+    isBot: true,
+  };
+}
+
+function isBot(playerId) {
+  const room = [...rooms.values()].find(r => r.players.some(p => p.id === playerId));
+  if (!room) return false;
+  const player = room.players.find(p => p.id === playerId);
+  return player?.isBot === true;
+}
+
+function isBotRoom(roomCode) {
+  const room = rooms.get(roomCode);
+  return room?.players.some(p => p.isBot) || false;
+}
+
+function getBotPlayer(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room) return null;
+  return room.players.find(p => p.isBot) || null;
+}
+
 module.exports = {
   createRoom,
   joinRoom,
@@ -677,5 +713,10 @@ module.exports = {
   handleTimerExpiry,
   leaveRoom,
   getRoom,
-  updatePlayerSocket
+  updatePlayerSocket,
+  makeBotPlayer,
+  isBot,
+  isBotRoom,
+  getBotPlayer,
+  BOT_ID_PREFIX,
 };

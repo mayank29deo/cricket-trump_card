@@ -34,6 +34,113 @@ const roomTimers = new Map();
 // Phase timers for active_selecting / opponents_selecting
 const phaseTimers = new Map();
 
+// Bot move timers (so they can be cleared on room cleanup)
+const botTimers = new Map();
+
+function clearBotTimer(roomCode) {
+  if (botTimers.has(roomCode)) {
+    clearTimeout(botTimers.get(roomCode));
+    botTimers.delete(roomCode);
+  }
+}
+
+/**
+ * Schedule a bot move after a short random delay (2-5s) to feel natural.
+ * Handles both active_selecting (bot picks card+stat) and opponents_selecting (bot picks counter card).
+ */
+function scheduleBotMove(roomCode) {
+  clearBotTimer(roomCode);
+  const room = gameManager.getRoom(roomCode);
+  if (!room || room.gamePhase === 'ended') return;
+
+  const bot = gameManager.getBotPlayer(roomCode);
+  if (!bot || !bot.isActive || bot.hand.length === 0) return;
+
+  const delay = 2000 + Math.floor(Math.random() * 3000); // 2-5s
+
+  if (room.gamePhase === 'active_selecting') {
+    const activePlayer = room.players[room.activePlayerIndex];
+    if (activePlayer?.isBot) {
+      botTimers.set(roomCode, setTimeout(() => {
+        const currentRoom = gameManager.getRoom(roomCode);
+        if (!currentRoom || currentRoom.gamePhase !== 'active_selecting') return;
+
+        const autoResult = gameManager.autoSelectActive(roomCode);
+        if (autoResult.error) return;
+
+        const { room: updatedRoom, activeCard, stat } = autoResult;
+        const activePlayerId = updatedRoom.players[updatedRoom.activePlayerIndex]?.id;
+
+        // Clear the normal phase timer since bot acted early
+        clearPhaseTimer(roomCode);
+
+        io.to(roomCode).emit('phase_changed', {
+          phase: 'opponents_selecting',
+          activePlayerId,
+          activeCard,
+          stat,
+          statValue: activeCard.stats[stat],
+          phaseTimeLeft: updatedRoom.opponentPhaseSeconds
+        });
+
+        startOpponentPhaseTimer(roomCode);
+      }, delay));
+    }
+  } else if (room.gamePhase === 'opponents_selecting') {
+    if (bot && !room.opponentSelections[bot.id]) {
+      const activePlayer = room.players[room.activePlayerIndex];
+      if (activePlayer && activePlayer.id !== bot.id) {
+        botTimers.set(roomCode, setTimeout(() => {
+          const currentRoom = gameManager.getRoom(roomCode);
+          if (!currentRoom || currentRoom.gamePhase !== 'opponents_selecting') return;
+          if (currentRoom.opponentSelections[bot.id]) return; // already picked
+
+          const result = gameManager.selectOpponentCard(roomCode, bot.id, pickBestOpponentCard(currentRoom, bot));
+          if (result.error) return;
+
+          // Broadcast progress
+          const activeOpponents = currentRoom.players.filter(
+            p => p.isActive && p.hand.length > 0 && p.id !== activePlayer.id
+          );
+          const submittedCount = activeOpponents.filter(p => currentRoom.opponentSelections[p.id]).length;
+          io.to(roomCode).emit('opponent_selection_update', {
+            submittedCount,
+            totalOpponents: activeOpponents.length
+          });
+
+          if (result.allSelected) {
+            clearPhaseTimer(roomCode);
+            const resolveResult = gameManager.resolveRound(roomCode);
+            handleResolveResult(roomCode, resolveResult);
+          }
+        }, delay));
+      }
+    }
+  }
+}
+
+/** Pick the best card for a bot opponent to counter the announced stat */
+function pickBestOpponentCard(room, bot) {
+  const stat = room.activeStat;
+  const lowerIsBetter = stat === 'ipl_economy';
+  const eligible = bot.hand.filter(c => !c.usedStats || !c.usedStats.includes(stat));
+  const pool = eligible.length > 0 ? eligible : bot.hand;
+
+  let bestCard = pool[0];
+  let bestValue = lowerIsBetter ? Infinity : -Infinity;
+
+  pool.forEach(card => {
+    const val = card.stats[stat] || 0;
+    if (lowerIsBetter) {
+      if (val > 0 && val < bestValue) { bestValue = val; bestCard = card; }
+    } else {
+      if (val > bestValue) { bestValue = val; bestCard = card; }
+    }
+  });
+
+  return bestCard.id;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function buildGameStatePublic(room) {
@@ -154,6 +261,11 @@ function handleResolveResult(roomCode, result) {
 
       // Start the active-selection phase timer
       startActivePhaseTimer(roomCode);
+
+      // If the new active player is a bot, schedule its move
+      if (gameManager.isBotRoom(roomCode)) {
+        scheduleBotMove(roomCode);
+      }
     }, 2500);
   }
 }
@@ -206,6 +318,11 @@ function startActivePhaseTimer(roomCode) {
     });
 
     startOpponentPhaseTimer(roomCode);
+
+    // If bot is an opponent, schedule its counter-pick
+    if (gameManager.isBotRoom(roomCode)) {
+      scheduleBotMove(roomCode);
+    }
   }, room.activePhaseSeconds * 1000);
 
   phaseTimers.set(roomCode, { tickInterval, expireTimeout });
@@ -487,6 +604,62 @@ io.on('connection', (socket) => {
   });
 
   /**
+   * Create a 1v1 game against a bot — creates room, adds bot, deals cards, starts immediately.
+   */
+  socket.on('create_bot_game', ({ player, timeOption, deckType }) => {
+    try {
+      const playerWithSocket = { ...player, socketId: socket.id };
+      const room = gameManager.createRoom(playerWithSocket, timeOption, deckType);
+      const roomCode = room.code;
+      socket.join(roomCode);
+
+      // Add bot to room
+      const bot = gameManager.makeBotPlayer();
+      gameManager.joinRoom(roomCode, bot);
+
+      // Start game immediately
+      const result = gameManager.startGame(roomCode);
+      if (result.error) {
+        socket.emit('error', { message: result.error });
+        return;
+      }
+
+      const updatedRoom = result.room;
+      const activePlayerId = updatedRoom.players[updatedRoom.activePlayerIndex]?.id;
+
+      // Send game_started only to the human player
+      const humanPlayer = updatedRoom.players.find(p => p.id === player.id);
+      if (humanPlayer) {
+        socket.emit('game_started', {
+          myHand: humanPlayer.hand,
+          myId: humanPlayer.id,
+          gameState: buildGameStatePublic(updatedRoom),
+          roomCode,
+        });
+      }
+
+      io.to(roomCode).emit('phase_changed', {
+        phase: 'active_selecting',
+        activePlayerId,
+        activeCard: null,
+        stat: null,
+        statValue: null,
+        phaseTimeLeft: updatedRoom.activePhaseSeconds
+      });
+
+      startRoomTimer(roomCode);
+      startActivePhaseTimer(roomCode);
+
+      // If bot is first active player, schedule its move
+      scheduleBotMove(roomCode);
+
+      console.log(`Bot game started: ${roomCode} — ${player.name} vs ${bot.name}`);
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  /**
    * Active player selects their card and a stat.
    */
   socket.on('select_card_stat', ({ roomCode, playerId, cardId, stat }) => {
@@ -514,6 +687,11 @@ io.on('connection', (socket) => {
       });
 
       startOpponentPhaseTimer(roomCode);
+
+      // If bot is an opponent, schedule its counter-pick
+      if (gameManager.isBotRoom(roomCode)) {
+        scheduleBotMove(roomCode);
+      }
     } catch (err) {
       socket.emit('error', { message: err.message });
     }
