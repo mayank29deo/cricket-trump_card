@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
+import AdBanner from '../components/ui/AdBanner'
 import useAuthStore from '../store/authStore'
 
 const TAGLINES = [
@@ -232,6 +233,11 @@ export default function Home() {
           ))}
         </div>
       </main>
+
+      {/* Ad banner */}
+      <div className="relative z-10 flex justify-center">
+        <AdBanner variant="banner" slot="" className="max-w-lg mx-auto" />
+      </div>
 
       {/* Stats ticker */}
       <div className="relative z-10 border-t border-white/5 bg-pitch-800/50 py-3 overflow-hidden">

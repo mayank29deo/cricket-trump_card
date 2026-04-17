@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import CricketCard from '../components/game/CricketCard'
 import GameTimer from '../components/game/GameTimer'
 import Button from '../components/ui/Button'
+import AdBanner from '../components/ui/AdBanner'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
 import { connectSocket, getSocket, safeEmit } from '../lib/socket'
@@ -816,6 +817,8 @@ export default function Game() {
               })}
             </div>
           </div>
+
+          <AdBanner variant="banner" slot="" className="rounded-xl overflow-hidden opacity-80" />
 
           {/* Share + navigation */}
           <div className="space-y-3">

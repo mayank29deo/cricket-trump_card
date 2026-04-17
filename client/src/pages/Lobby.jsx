@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import ShareModal from '../components/lobby/ShareModal'
 import Modal from '../components/ui/Modal'
+import AdBanner from '../components/ui/AdBanner'
 import useAuthStore from '../store/authStore'
 import useGameStore from '../store/gameStore'
 import { getSocket, connectSocket, resetSocket, PRIMARY_URL, FALLBACK_URL, setActiveUrl } from '../lib/socket'
@@ -584,6 +585,8 @@ export default function Lobby() {
               <Button variant="danger" fullWidth onClick={handleLeaveRoom} size="sm">
                 Leave Room
               </Button>
+
+              <AdBanner variant="banner" slot="" className="mt-4 rounded-xl overflow-hidden opacity-80" />
             </div>
           </div>
         </div>
