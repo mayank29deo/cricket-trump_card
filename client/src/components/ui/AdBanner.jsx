@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 // Replace with your actual AdSense publisher ID once approved
-const ADSENSE_PUB_ID = 'ca-pub-XXXXXXXXXXXXXXXX'
+const ADSENSE_PUB_ID = 'ca-pub-3658317140326415'
 
 /**
  * Minimal AdSense banner — renders a responsive ad unit.
