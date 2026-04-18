@@ -50,7 +50,7 @@ export default function QuizLobby() {
   const [view, setView] = useState('main') // main | waiting
   const [activeTab, setActiveTab] = useState('create') // create | join
   const [deckTab, setDeckTab] = useState('international')
-  const [selectedCats, setSelectedCats] = useState(['international_general'])
+  const [selectedCats, setSelectedCats] = useState([])
   const [questionCount, setQuestionCount] = useState(10)
   const [joinCode, setJoinCode] = useState('')
   const [nickname, setNickname] = useState('')
@@ -274,7 +274,7 @@ export default function QuizLobby() {
                   {[{ k: 'international', l: '🌍 International' }, { k: 'ipl', l: '🏆 IPL' }].map(d => (
                     <button key={d.k}
                       className={`flex-1 py-2 text-sm font-semibold transition-colors ${deckTab === d.k ? 'bg-emerald-700 text-white' : 'bg-white/5 text-slate-400'}`}
-                      onClick={() => setDeckTab(d.k)}
+                      onClick={() => { setDeckTab(d.k); setSelectedCats([]) }}
                     >
                       {d.l}
                     </button>
