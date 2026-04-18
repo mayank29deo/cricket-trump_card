@@ -25,14 +25,20 @@ export default function QuizGame() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const listenersAttached = useRef(false)
 
-  // On mount: read first question from navigation state (always available immediately)
+  // On mount: request current question from server (bulletproof — no timing issues)
   useEffect(() => {
+    // Try navigation state first (instant)
     const navState = location.state
-    if (navState?.question && !currentQuestion) {
+    if (navState?.question) {
       setQuestion(navState.question)
+      if (navState.room) updateRoom(navState.room)
     }
-    if (navState?.room) {
-      updateRoom(navState.room)
+
+    // Always also request from server as backup
+    const socket = getSocket()
+    const code = roomCode || urlCode
+    if (code) {
+      socket.emit('quiz_get_current', { roomCode: code })
     }
   }, [])
 
@@ -40,6 +46,14 @@ export default function QuizGame() {
     const socket = getSocket()
     if (listenersAttached.current) return
     listenersAttached.current = true
+
+    // Server responds with current question state
+    socket.on('quiz_current_state', ({ question, room }) => {
+      if (question && !useQuizStore.getState().currentQuestion) {
+        setQuestion(question)
+      }
+      if (room) updateRoom(room)
+    })
 
     // Fallback: catch quiz_started if it arrives after mount
     socket.on('quiz_started', ({ question, room }) => {
@@ -69,6 +83,7 @@ export default function QuizGame() {
     })
 
     return () => {
+      socket.off('quiz_current_state')
       socket.off('quiz_started')
       socket.off('quiz_timer_tick')
       socket.off('quiz_answer_update')

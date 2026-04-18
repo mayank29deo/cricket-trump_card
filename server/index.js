@@ -1009,6 +1009,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('quiz_get_current', ({ roomCode }) => {
+    try {
+      const room = quizManager.getQuizRoom(roomCode);
+      if (!room) return;
+      const question = quizManager.getQuestionPublic(room);
+      socket.emit('quiz_current_state', { question, room: quizRoomPublic(room) });
+    } catch (err) { /* ignore */ }
+  });
+
   socket.on('quiz_leave', ({ roomCode, playerId }) => {
     try {
       const result = quizManager.leaveQuizRoom(roomCode, playerId);
