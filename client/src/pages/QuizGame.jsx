@@ -25,37 +25,17 @@ export default function QuizGame() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const listenersAttached = useRef(false)
 
-  // On mount: request current question from server (bulletproof — no timing issues)
-  useEffect(() => {
-    // Try navigation state first (instant)
-    const navState = location.state
-    if (navState?.question) {
-      setQuestion(navState.question)
-      if (navState.room) updateRoom(navState.room)
-    }
-
-    // Always also request from server as backup
-    const socket = getSocket()
-    const code = roomCode || urlCode
-    if (code) {
-      socket.emit('quiz_get_current', { roomCode: code })
-    }
-  }, [])
-
   useEffect(() => {
     const socket = getSocket()
     if (listenersAttached.current) return
     listenersAttached.current = true
 
-    // Server responds with current question state
+    // 1. Attach ALL listeners FIRST (before emitting anything)
     socket.on('quiz_current_state', ({ question, room }) => {
-      if (question && !useQuizStore.getState().currentQuestion) {
-        setQuestion(question)
-      }
+      if (question) setQuestion(question)
       if (room) updateRoom(room)
     })
 
-    // Fallback: catch quiz_started if it arrives after mount
     socket.on('quiz_started', ({ question, room }) => {
       if (question) setQuestion(question)
       if (room) updateRoom(room)
@@ -81,6 +61,18 @@ export default function QuizGame() {
     socket.on('quiz_ended', ({ leaderboard: lb }) => {
       setLeaderboard(lb)
     })
+
+    // 2. Now that listeners are attached, try navigation state + request from server
+    const navState = location.state
+    if (navState?.question) {
+      setQuestion(navState.question)
+      if (navState.room) updateRoom(navState.room)
+    }
+
+    const code = roomCode || urlCode
+    if (code) {
+      socket.emit('quiz_get_current', { roomCode: code })
+    }
 
     return () => {
       socket.off('quiz_current_state')
