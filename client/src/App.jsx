@@ -6,6 +6,7 @@ import Game from './pages/Game'
 import Leaderboard from './pages/Leaderboard'
 import QuizLobby from './pages/QuizLobby'
 import QuizGame from './pages/QuizGame'
+import HintQuizGame from './pages/HintQuizGame'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/quiz" element={<QuizLobby />} />
       <Route path="/quiz/play/:roomCode" element={<QuizGame />} />
+      <Route path="/hintquiz/play/:roomCode" element={<HintQuizGame />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

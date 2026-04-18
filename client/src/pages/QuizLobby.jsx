@@ -4,6 +4,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import useAuthStore from '../store/authStore'
 import useQuizStore from '../store/quizStore'
+import useHintQuizStore from '../store/hintQuizStore'
 import { connectSocket, getSocket, resetSocket, PRIMARY_URL, FALLBACK_URL, setActiveUrl } from '../lib/socket'
 
 const INTL_CATS = [
@@ -42,13 +43,20 @@ function PlayerAvatar({ name, size = 8 }) {
   )
 }
 
+const HINT_CATS = [
+  { key: 'hint_international', label: 'International', icon: '🌍' },
+  { key: 'hint_ipl', label: 'IPL Stars', icon: '🏆' },
+]
+
 export default function QuizLobby() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { roomData, roomCode, myId, setRoom, updateRoom, resetQuiz, setQuestion, setSolo } = useQuizStore()
+  const hintStore = useHintQuizStore()
 
   const [view, setView] = useState('main') // main | waiting
   const [activeTab, setActiveTab] = useState('create') // create | join
+  const [quizMode, setQuizMode] = useState('classic') // classic | hint
   const [deckTab, setDeckTab] = useState('international')
   const [selectedCats, setSelectedCats] = useState([])
   const [questionCount, setQuestionCount] = useState(10)
@@ -61,13 +69,14 @@ export default function QuizLobby() {
   const displayName = nickname.trim() || user?.name || 'Player'
 
   useEffect(() => {
-    return () => { resetQuiz() }
+    return () => { resetQuiz(); hintStore.resetHintQuiz() }
   }, [])
 
   function attachListeners(socket) {
     if (listenersAttached.current) return
     listenersAttached.current = true
 
+    // Classic quiz listeners
     socket.on('quiz_room_created', ({ roomCode: code, room }) => {
       setRoom(code, room, user.id)
       setView('waiting')
@@ -86,6 +95,27 @@ export default function QuizLobby() {
       setQuestion(question)
       navigate(`/quiz/play/${code}`, { state: { question, room } })
     })
+
+    // Hint quiz listeners
+    socket.on('hquiz_room_created', ({ roomCode: code, room }) => {
+      hintStore.setRoom(code, room, user.id)
+      setView('waiting')
+      setIsConnecting(false)
+    })
+    socket.on('hquiz_room_joined', ({ room, myId: id }) => {
+      hintStore.setRoom(room.code, room, id)
+      setView('waiting')
+      setIsConnecting(false)
+    })
+    socket.on('hquiz_room_updated', ({ room }) => {
+      hintStore.updateRoom(room)
+    })
+    socket.on('hquiz_started', ({ roomCode: code, question, room }) => {
+      hintStore.setRoom(code, room, hintStore.myId || user.id)
+      hintStore.setQuestion(question)
+      navigate(`/hintquiz/play/${code}`, { state: { question, room } })
+    })
+
     socket.on('error', ({ message }) => {
       setError(message)
       setIsConnecting(false)
@@ -123,7 +153,8 @@ export default function QuizLobby() {
   const handleCreateRoom = () => {
     if (!user) return
     if (selectedCats.length === 0) { setError('Select at least one category'); return }
-    connectAndEmit((s) => s.emit('quiz_create_room', {
+    const event = quizMode === 'hint' ? 'hquiz_create_room' : 'quiz_create_room'
+    connectAndEmit((s) => s.emit(event, {
       player: { id: user.id, name: displayName },
       categories: selectedCats,
       questionCount,
@@ -133,34 +164,58 @@ export default function QuizLobby() {
   const handleSoloStart = () => {
     if (!user) return
     if (selectedCats.length === 0) { setError('Select at least one category'); return }
-    setSolo(true)
-    connectAndEmit((s) => s.emit('quiz_solo_start', {
-      player: { id: user.id, name: displayName },
-      categories: selectedCats,
-      questionCount,
-    }))
+    if (quizMode === 'hint') {
+      hintStore.setSolo(true)
+      connectAndEmit((s) => s.emit('hquiz_solo_start', {
+        player: { id: user.id, name: displayName },
+        categories: selectedCats,
+        questionCount,
+      }))
+    } else {
+      setSolo(true)
+      connectAndEmit((s) => s.emit('quiz_solo_start', {
+        player: { id: user.id, name: displayName },
+        categories: selectedCats,
+        questionCount,
+      }))
+    }
   }
 
   const handleJoinRoom = () => {
     if (!user) return
     const code = joinCode.trim().toUpperCase()
     if (code.length < 4) { setError('Enter a valid room code'); return }
-    connectAndEmit((s) => s.emit('quiz_join_room', {
-      roomCode: code,
-      player: { id: user.id, name: displayName },
-    }))
+    // Try both quiz types — server will reject the wrong one
+    connectAndEmit((s) => {
+      s.emit('quiz_join_room', { roomCode: code, player: { id: user.id, name: displayName } })
+      s.emit('hquiz_join_room', { roomCode: code, player: { id: user.id, name: displayName } })
+    })
   }
+
+  const isHintMode = quizMode === 'hint' || hintStore.roomData?.gameMode === 'hint_quiz'
+  const activeRoomData = isHintMode ? hintStore.roomData : roomData
+  const activeRoomCode = isHintMode ? hintStore.roomCode : roomCode
+  const activeMyId = isHintMode ? hintStore.myId : myId
 
   const handleStartQuiz = () => {
     const socket = getSocket()
-    socket.emit('quiz_start', { roomCode, playerId: myId })
+    if (isHintMode) {
+      socket.emit('hquiz_start', { roomCode: activeRoomCode, playerId: activeMyId })
+    } else {
+      socket.emit('quiz_start', { roomCode: activeRoomCode, playerId: activeMyId })
+    }
   }
 
   const handleLeave = () => {
     const socket = getSocket()
-    socket.emit('quiz_leave', { roomCode, playerId: myId })
+    if (isHintMode) {
+      socket.emit('hquiz_leave', { roomCode: activeRoomCode, playerId: activeMyId })
+      hintStore.resetHintQuiz()
+    } else {
+      socket.emit('quiz_leave', { roomCode: activeRoomCode, playerId: activeMyId })
+      resetQuiz()
+    }
     setView('main')
-    resetQuiz()
     listenersAttached.current = false
   }
 
@@ -168,12 +223,12 @@ export default function QuizLobby() {
     setSelectedCats(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
   }
 
-  const isHost = roomData?.host === myId
-  const canStart = isHost && roomData?.players?.length >= 1
-  const cats = deckTab === 'international' ? INTL_CATS : IPL_CATS
+  const isHost = activeRoomData?.host === activeMyId
+  const canStart = isHost && activeRoomData?.players?.length >= 1
+  const cats = quizMode === 'hint' ? HINT_CATS : (deckTab === 'international' ? INTL_CATS : IPL_CATS)
 
   // ─── Waiting room ────────────────────────────────────────────────────────
-  if (view === 'waiting' && roomData) {
+  if (view === 'waiting' && activeRoomData) {
     return (
       <div className="min-h-screen stadium-bg flex flex-col">
         <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5">
@@ -185,19 +240,19 @@ export default function QuizLobby() {
           <div className="w-full max-w-md space-y-6">
             <div className="glass-card rounded-2xl p-6 text-center">
               <p className="text-slate-400 text-sm mb-1">Room Code</p>
-              <span className="font-rajdhani font-bold text-4xl tracking-[0.2em] text-amber-400">{roomCode}</span>
-              <p className="text-slate-400 text-sm mt-2">{roomData.questionCount} questions</p>
+              <span className="font-rajdhani font-bold text-4xl tracking-[0.2em] text-amber-400">{activeRoomCode}</span>
+              <p className="text-slate-400 text-sm mt-2">{activeRoomData.questionCount} questions</p>
             </div>
 
             <div className="glass-card rounded-2xl p-6">
-              <h3 className="font-rajdhani font-semibold text-white mb-4">Players ({roomData.players.length}/6)</h3>
+              <h3 className="font-rajdhani font-semibold text-white mb-4">Players ({activeRoomData.players.length}/6)</h3>
               <div className="space-y-3">
-                {roomData.players.map(p => (
+                {activeRoomData.players.map(p => (
                   <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
                     <PlayerAvatar name={p.name} size={8} />
                     <span className="text-white font-medium flex-1">{p.name}</span>
                     <span className="text-emerald-400 text-sm font-bold">{p.score} pts</span>
-                    {p.id === roomData.host && <span className="text-amber-400 text-xs font-bold bg-amber-900/30 px-2 py-0.5 rounded">HOST</span>}
+                    {p.id === activeRoomData.host && <span className="text-amber-400 text-xs font-bold bg-amber-900/30 px-2 py-0.5 rounded">HOST</span>}
                   </div>
                 ))}
               </div>
@@ -258,6 +313,22 @@ export default function QuizLobby() {
           {activeTab === 'create' && (
             <div className="space-y-5 animate-slide-up">
               {/* Nickname */}
+              {/* Quiz Mode Toggle */}
+              <div className="glass-card rounded-2xl p-5">
+                <h3 className="font-rajdhani font-semibold text-white mb-3">Quiz Mode</h3>
+                <div className="flex rounded-lg overflow-hidden border border-white/10">
+                  {[{ k: 'classic', l: '📝 Classic MCQ', d: '4 options, pick the right one' }, { k: 'hint', l: '💡 Hint Quiz', d: 'Guess the cricketer from clues' }].map(m => (
+                    <button key={m.k}
+                      className={`flex-1 py-3 px-2 text-center transition-colors ${quizMode === m.k ? 'bg-emerald-700 text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                      onClick={() => { setQuizMode(m.k); setSelectedCats([]) }}
+                    >
+                      <div className="font-semibold text-sm">{m.l}</div>
+                      <div className="text-xs mt-0.5 opacity-70">{m.d}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="glass-card rounded-2xl p-5">
                 <h3 className="font-rajdhani font-semibold text-white mb-1">Your Name <span className="text-slate-500 text-sm">(optional)</span></h3>
                 <input type="text" maxLength={20} value={nickname} onChange={e => setNickname(e.target.value)}
@@ -266,19 +337,21 @@ export default function QuizLobby() {
                 />
               </div>
 
-              {/* Deck tabs */}
+              {/* Categories */}
               <div className="glass-card rounded-2xl p-5">
                 <h3 className="font-rajdhani font-semibold text-white mb-3">Choose Categories</h3>
-                <div className="flex rounded-lg overflow-hidden border border-white/10 mb-4">
-                  {[{ k: 'international', l: '🌍 International' }, { k: 'ipl', l: '🏆 IPL' }].map(d => (
-                    <button key={d.k}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${deckTab === d.k ? 'bg-emerald-700 text-white' : 'bg-white/5 text-slate-400'}`}
-                      onClick={() => { setDeckTab(d.k); setSelectedCats([]) }}
-                    >
-                      {d.l}
-                    </button>
-                  ))}
-                </div>
+                {quizMode === 'classic' && (
+                  <div className="flex rounded-lg overflow-hidden border border-white/10 mb-4">
+                    {[{ k: 'international', l: '🌍 International' }, { k: 'ipl', l: '🏆 IPL' }].map(d => (
+                      <button key={d.k}
+                        className={`flex-1 py-2 text-sm font-semibold transition-colors ${deckTab === d.k ? 'bg-emerald-700 text-white' : 'bg-white/5 text-slate-400'}`}
+                        onClick={() => { setDeckTab(d.k); setSelectedCats([]) }}
+                      >
+                        {d.l}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2">
                   {cats.map(c => (

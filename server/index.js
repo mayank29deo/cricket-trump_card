@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const gameManager = require('./gameManager');
 const quizManager = require('./quizManager');
+const hintQuizManager = require('./hintQuizManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -95,6 +96,73 @@ function quizRoomPublic(room) {
     currentQuestion: room.currentQuestion,
     phase: room.phase,
     isSolo: room.isSolo,
+  };
+}
+
+// ─── Hint Quiz helpers ─────────────────────────────────────────────────────
+const hintQuizTimers = new Map();
+
+function clearHintQuizTimer(roomCode) {
+  if (hintQuizTimers.has(roomCode)) {
+    const { tickInterval, expireTimeout } = hintQuizTimers.get(roomCode);
+    if (tickInterval) clearInterval(tickInterval);
+    if (expireTimeout) clearTimeout(expireTimeout);
+    hintQuizTimers.delete(roomCode);
+  }
+}
+
+function startHintQuizTimer(roomCode) {
+  clearHintQuizTimer(roomCode);
+  const room = hintQuizManager.getHintRoom(roomCode);
+  if (!room || room.phase !== 'question') return;
+
+  let timeLeft = room.questionTimeLimit;
+  const tickInterval = setInterval(() => {
+    timeLeft -= 1;
+    io.to('hquiz_' + roomCode).emit('hquiz_timer_tick', { timeLeft });
+  }, 1000);
+
+  const expireTimeout = setTimeout(() => {
+    clearInterval(tickInterval);
+    hintQuizTimers.delete(roomCode);
+    resolveAndAdvanceHintQuiz(roomCode);
+  }, room.questionTimeLimit * 1000);
+
+  hintQuizTimers.set(roomCode, { tickInterval, expireTimeout });
+}
+
+function resolveAndAdvanceHintQuiz(roomCode) {
+  const resolveResult = hintQuizManager.resolveHintQuestion(roomCode);
+  if (resolveResult.error) return;
+
+  io.to('hquiz_' + roomCode).emit('hquiz_question_result', resolveResult.result);
+
+  setTimeout(() => {
+    const nextResult = hintQuizManager.nextHintQuestion(roomCode);
+    if (nextResult.error) return;
+
+    if (nextResult.ended) {
+      io.to('hquiz_' + roomCode).emit('hquiz_ended', { leaderboard: nextResult.finalLeaderboard });
+    } else {
+      // Send base question to all, then per-player display
+      const room = nextResult.room;
+      io.to('hquiz_' + roomCode).emit('hquiz_next_question', { question: nextResult.question, room: hintRoomPublic(room) });
+      startHintQuizTimer(roomCode);
+    }
+  }, 4000);
+}
+
+function hintRoomPublic(room) {
+  return {
+    code: room.code,
+    host: room.host,
+    players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score })),
+    categories: room.categories,
+    questionCount: room.questionCount,
+    currentQuestion: room.currentQuestion,
+    phase: room.phase,
+    isSolo: room.isSolo,
+    gameMode: 'hint_quiz',
   };
 }
 
@@ -1025,6 +1093,99 @@ io.on('connection', (socket) => {
       if (result && !result.deleted) {
         io.to('quiz_' + roomCode).emit('quiz_room_updated', { room: quizRoomPublic(result.room) });
       }
+    } catch (err) { /* ignore */ }
+  });
+
+  // ─── HINT QUIZ EVENTS ────────────────────────────────────────────────────
+
+  socket.on('hquiz_create_room', ({ player, categories, questionCount }) => {
+    try {
+      const p = { ...player, socketId: socket.id };
+      const room = hintQuizManager.createHintRoom(p, categories, questionCount || 10);
+      socket.join('hquiz_' + room.code);
+      socket.emit('hquiz_room_created', { roomCode: room.code, room: hintRoomPublic(room) });
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_solo_start', ({ player, categories, questionCount }) => {
+    try {
+      const p = { ...player, socketId: socket.id };
+      const room = hintQuizManager.createSoloHintQuiz(p, categories, questionCount || 10);
+      socket.join('hquiz_' + room.code);
+      const result = hintQuizManager.startHintQuiz(room.code);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      const playerDisplay = room.currentHints[player.id]?.display || result.question.display;
+      socket.emit('hquiz_started', { roomCode: room.code, question: { ...result.question, display: playerDisplay }, room: hintRoomPublic(result.room) });
+      startHintQuizTimer(room.code);
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_join_room', ({ roomCode, player }) => {
+    try {
+      const p = { ...player, socketId: socket.id };
+      const result = hintQuizManager.joinHintRoom(roomCode, p);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      socket.join('hquiz_' + roomCode);
+      const pub = hintRoomPublic(result.room);
+      io.to('hquiz_' + roomCode).emit('hquiz_room_updated', { room: pub });
+      socket.emit('hquiz_room_joined', { room: pub, myId: player.id });
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_start', ({ roomCode, playerId }) => {
+    try {
+      const room = hintQuizManager.getHintRoom(roomCode);
+      if (!room) { socket.emit('error', { message: 'Room not found' }); return; }
+      if (room.host !== playerId) { socket.emit('error', { message: 'Only host can start' }); return; }
+      const result = hintQuizManager.startHintQuiz(roomCode);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      // Send personalized display to each player
+      result.room.players.forEach(p => {
+        const pSocket = io.sockets.sockets.get(p.socketId);
+        const display = result.room.currentHints[p.id]?.display || result.question.display;
+        if (pSocket) pSocket.emit('hquiz_started', { roomCode, question: { ...result.question, display }, room: hintRoomPublic(result.room) });
+      });
+      startHintQuizTimer(roomCode);
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_use_hint', ({ roomCode, playerId }) => {
+    try {
+      const result = hintQuizManager.useHint(roomCode, playerId);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      // Only send to requesting player
+      socket.emit('hquiz_hint_result', { newDisplay: result.newDisplay, hintsRemaining: result.hintsRemaining });
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_answer', ({ roomCode, playerId, answer }) => {
+    try {
+      const result = hintQuizManager.submitHintAnswer(roomCode, playerId, answer);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      io.to('hquiz_' + roomCode).emit('hquiz_answer_update', { answeredCount: result.answeredCount, totalPlayers: result.room.players.length });
+      if (result.allAnswered) {
+        clearHintQuizTimer(roomCode);
+        resolveAndAdvanceHintQuiz(roomCode);
+      }
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('hquiz_get_current', ({ roomCode }) => {
+    try {
+      const room = hintQuizManager.getHintRoom(roomCode);
+      if (!room) return;
+      const question = hintQuizManager.getHintQuestionPublic(room);
+      const playerId = room.players.find(p => p.socketId === socket.id)?.id;
+      const display = (playerId && room.currentHints[playerId]?.display) || question?.display;
+      socket.emit('hquiz_current_state', { question: question ? { ...question, display } : null, room: hintRoomPublic(room) });
+    } catch (err) { /* ignore */ }
+  });
+
+  socket.on('hquiz_leave', ({ roomCode, playerId }) => {
+    try {
+      const result = hintQuizManager.leaveHintRoom(roomCode, playerId);
+      socket.leave('hquiz_' + roomCode);
+      if (result && !result.deleted) io.to('hquiz_' + roomCode).emit('hquiz_room_updated', { room: hintRoomPublic(result.room) });
     } catch (err) { /* ignore */ }
   });
 
