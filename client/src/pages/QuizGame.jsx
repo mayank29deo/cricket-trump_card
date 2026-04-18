@@ -29,6 +29,12 @@ export default function QuizGame() {
     if (listenersAttached.current) return
     listenersAttached.current = true
 
+    // Catch quiz_started in case it arrives after navigation (race condition fallback)
+    socket.on('quiz_started', ({ question, room }) => {
+      if (question) setQuestion(question)
+      if (room) updateRoom(room)
+    })
+
     socket.on('quiz_timer_tick', ({ timeLeft: t }) => setTimeLeft(t))
 
     socket.on('quiz_answer_update', ({ answeredCount: c, totalPlayers: t }) => {
@@ -51,6 +57,7 @@ export default function QuizGame() {
     })
 
     return () => {
+      socket.off('quiz_started')
       socket.off('quiz_timer_tick')
       socket.off('quiz_answer_update')
       socket.off('quiz_question_result')
