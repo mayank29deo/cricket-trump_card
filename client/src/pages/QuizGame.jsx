@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import AdBanner from '../components/ui/AdBanner'
 import useAuthStore from '../store/authStore'
@@ -12,6 +12,7 @@ const OPTION_BG = ['#1e3a5f', '#064e3b', '#78350f', '#7f1d1d']
 
 export default function QuizGame() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { roomCode: urlCode } = useParams()
   const { user } = useAuthStore()
   const {
@@ -24,12 +25,23 @@ export default function QuizGame() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const listenersAttached = useRef(false)
 
+  // On mount: read first question from navigation state (always available immediately)
+  useEffect(() => {
+    const navState = location.state
+    if (navState?.question && !currentQuestion) {
+      setQuestion(navState.question)
+    }
+    if (navState?.room) {
+      updateRoom(navState.room)
+    }
+  }, [])
+
   useEffect(() => {
     const socket = getSocket()
     if (listenersAttached.current) return
     listenersAttached.current = true
 
-    // Catch quiz_started in case it arrives after navigation (race condition fallback)
+    // Fallback: catch quiz_started if it arrives after mount
     socket.on('quiz_started', ({ question, room }) => {
       if (question) setQuestion(question)
       if (room) updateRoom(room)

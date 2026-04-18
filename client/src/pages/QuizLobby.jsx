@@ -84,8 +84,7 @@ export default function QuizLobby() {
     socket.on('quiz_started', ({ roomCode: code, question, room }) => {
       setRoom(code, room, myId || user.id)
       setQuestion(question)
-      // Small delay to let store flush before navigating to QuizGame
-      setTimeout(() => navigate(`/quiz/play/${code}`), 50)
+      navigate(`/quiz/play/${code}`, { state: { question, room } })
     })
     socket.on('error', ({ message }) => {
       setError(message)
