@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const gameManager = require('./gameManager');
+const quizManager = require('./quizManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +28,75 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.get('/quiz/categories', (req, res) => {
+  res.json(quizManager.QUIZ_CATEGORIES);
+});
+
+// ─── Quiz helpers ──────────────────────────────────────────────────────────
+const quizTimers = new Map();
+
+function clearQuizTimer(roomCode) {
+  if (quizTimers.has(roomCode)) {
+    const { tickInterval, expireTimeout } = quizTimers.get(roomCode);
+    if (tickInterval) clearInterval(tickInterval);
+    if (expireTimeout) clearTimeout(expireTimeout);
+    quizTimers.delete(roomCode);
+  }
+}
+
+function startQuizQuestionTimer(roomCode) {
+  clearQuizTimer(roomCode);
+  const room = quizManager.getQuizRoom(roomCode);
+  if (!room || room.phase !== 'question') return;
+
+  let timeLeft = room.questionTimeLimit;
+  const tickInterval = setInterval(() => {
+    timeLeft -= 1;
+    io.to('quiz_' + roomCode).emit('quiz_timer_tick', { timeLeft });
+  }, 1000);
+
+  const expireTimeout = setTimeout(() => {
+    clearInterval(tickInterval);
+    quizTimers.delete(roomCode);
+    resolveAndAdvanceQuiz(roomCode);
+  }, room.questionTimeLimit * 1000);
+
+  quizTimers.set(roomCode, { tickInterval, expireTimeout });
+}
+
+function resolveAndAdvanceQuiz(roomCode) {
+  const resolveResult = quizManager.resolveQuestion(roomCode);
+  if (resolveResult.error) return;
+
+  io.to('quiz_' + roomCode).emit('quiz_question_result', resolveResult.result);
+
+  // After 3s reveal, advance to next question
+  setTimeout(() => {
+    const nextResult = quizManager.nextQuestion(roomCode);
+    if (nextResult.error) return;
+
+    if (nextResult.ended) {
+      io.to('quiz_' + roomCode).emit('quiz_ended', { leaderboard: nextResult.finalLeaderboard });
+    } else {
+      io.to('quiz_' + roomCode).emit('quiz_next_question', { question: nextResult.question, room: quizRoomPublic(nextResult.room) });
+      startQuizQuestionTimer(roomCode);
+    }
+  }, 3000);
+}
+
+function quizRoomPublic(room) {
+  return {
+    code: room.code,
+    host: room.host,
+    players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score })),
+    categories: room.categories,
+    questionCount: room.questionCount,
+    currentQuestion: room.currentQuestion,
+    phase: room.phase,
+    isSolo: room.isSolo,
+  };
+}
 
 // Overall game timers (display-only countdown)
 const roomTimers = new Map();
@@ -860,6 +930,93 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('rejoin_room error:', err.message);
     }
+  });
+
+  // ─── QUIZ EVENTS ──────────────────────────────────────────────────────────
+
+  socket.on('quiz_create_room', ({ player, categories, questionCount }) => {
+    try {
+      const playerWithSocket = { ...player, socketId: socket.id };
+      const room = quizManager.createQuizRoom(playerWithSocket, categories, questionCount || 10);
+      socket.join('quiz_' + room.code);
+      socket.emit('quiz_room_created', { roomCode: room.code, room: quizRoomPublic(room) });
+      console.log(`Quiz room created: ${room.code} by ${player.name}`);
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  socket.on('quiz_solo_start', ({ player, categories, questionCount }) => {
+    try {
+      const playerWithSocket = { ...player, socketId: socket.id };
+      const room = quizManager.createSoloQuiz(playerWithSocket, categories, questionCount || 10);
+      socket.join('quiz_' + room.code);
+      const result = quizManager.startQuiz(room.code);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      socket.emit('quiz_started', { roomCode: room.code, question: result.question, room: quizRoomPublic(result.room) });
+      startQuizQuestionTimer(room.code);
+      console.log(`Solo quiz started: ${room.code} by ${player.name}`);
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  socket.on('quiz_join_room', ({ roomCode, player }) => {
+    try {
+      const playerWithSocket = { ...player, socketId: socket.id };
+      const result = quizManager.joinQuizRoom(roomCode, playerWithSocket);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      socket.join('quiz_' + roomCode);
+      const pub = quizRoomPublic(result.room);
+      io.to('quiz_' + roomCode).emit('quiz_room_updated', { room: pub });
+      socket.emit('quiz_room_joined', { room: pub, myId: player.id });
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  socket.on('quiz_start', ({ roomCode, playerId }) => {
+    try {
+      const room = quizManager.getQuizRoom(roomCode);
+      if (!room) { socket.emit('error', { message: 'Room not found' }); return; }
+      if (room.host !== playerId) { socket.emit('error', { message: 'Only host can start' }); return; }
+      const result = quizManager.startQuiz(roomCode);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+      io.to('quiz_' + roomCode).emit('quiz_started', { roomCode, question: result.question, room: quizRoomPublic(result.room) });
+      startQuizQuestionTimer(roomCode);
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  socket.on('quiz_answer', ({ roomCode, playerId, answerIndex }) => {
+    try {
+      const result = quizManager.submitAnswer(roomCode, playerId, answerIndex);
+      if (result.error) { socket.emit('error', { message: result.error }); return; }
+
+      // Broadcast answer count
+      io.to('quiz_' + roomCode).emit('quiz_answer_update', {
+        answeredCount: result.answeredCount,
+        totalPlayers: result.room.players.length,
+      });
+
+      if (result.allAnswered) {
+        clearQuizTimer(roomCode);
+        resolveAndAdvanceQuiz(roomCode);
+      }
+    } catch (err) {
+      socket.emit('error', { message: err.message });
+    }
+  });
+
+  socket.on('quiz_leave', ({ roomCode, playerId }) => {
+    try {
+      const result = quizManager.leaveQuizRoom(roomCode, playerId);
+      socket.leave('quiz_' + roomCode);
+      if (result && !result.deleted) {
+        io.to('quiz_' + roomCode).emit('quiz_room_updated', { room: quizRoomPublic(result.room) });
+      }
+    } catch (err) { /* ignore */ }
   });
 
   socket.on('disconnect', () => {

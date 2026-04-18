@@ -4,6 +4,8 @@ import Auth from './pages/Auth'
 import Lobby from './pages/Lobby'
 import Game from './pages/Game'
 import Leaderboard from './pages/Leaderboard'
+import QuizLobby from './pages/QuizLobby'
+import QuizGame from './pages/QuizGame'
 
 export default function App() {
   return (
@@ -13,6 +15,8 @@ export default function App() {
       <Route path="/lobby" element={<Lobby />} />
       <Route path="/game/:roomCode" element={<Game />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
+      <Route path="/quiz" element={<QuizLobby />} />
+      <Route path="/quiz/play/:roomCode" element={<QuizGame />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

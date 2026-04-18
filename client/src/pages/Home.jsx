@@ -185,6 +185,17 @@ export default function Home() {
               </span>
             </Button>
             <Button
+              variant="secondary"
+              size="xl"
+              onClick={() => navigate('/quiz')}
+              className="w-full sm:w-auto min-w-[180px]"
+            >
+              <span className="flex items-center gap-2">
+                <span>🧠</span>
+                CRICKET QUIZ
+              </span>
+            </Button>
+            <Button
               variant="ghost"
               size="xl"
               onClick={() => setShowHowTo(true)}
