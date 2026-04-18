@@ -80,8 +80,9 @@ export default function QuizGame() {
   }
 
   const urgent = timeLeft <= 5
-  const myResult = questionResult?.playerAnswers?.[myId]
-  const myPoints = questionResult?.pointsAwarded?.[myId]
+  // Try myId first, then user.id — covers edge cases where store myId hasn't synced
+  const myResult = questionResult?.playerAnswers?.[myId] || questionResult?.playerAnswers?.[user?.id]
+  const myPoints = questionResult?.pointsAwarded?.[myId] ?? questionResult?.pointsAwarded?.[user?.id]
 
   // ─── ENDED ───────────────────────────────────────────────────────────────
   if (phase === 'ended' && leaderboard) {
@@ -186,7 +187,9 @@ export default function QuizGame() {
           {/* Options */}
           <div className="grid grid-cols-1 gap-3">
             {currentQuestion?.options?.map((opt, idx) => {
-              const isSelected = selectedAnswer === idx
+              // During reveal, use server's myResult.answer (reliable) instead of local selectedAnswer (can be stale in solo)
+              const myAnswerIdx = phase === 'reveal' ? myResult?.answer : selectedAnswer
+              const isSelected = myAnswerIdx === idx
               const isCorrect = phase === 'reveal' && questionResult?.correctAnswer === idx
               const isWrong = phase === 'reveal' && isSelected && !isCorrect
 
