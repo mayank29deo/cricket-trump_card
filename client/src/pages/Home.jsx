@@ -191,7 +191,7 @@ export default function Home() {
               className="w-full sm:w-auto min-w-[180px]"
             >
               <span className="flex items-center gap-2">
-                <span>🧠</span>
+                <span>🎯</span>
                 CRICKET QUIZ
               </span>
             </Button>

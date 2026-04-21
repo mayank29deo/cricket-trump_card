@@ -261,7 +261,7 @@ export default function QuizLobby() {
             {isHost ? (
               <Button variant="primary" fullWidth size="lg" onClick={handleStartQuiz} disabled={!canStart} className="neon-border">
                 <span className="flex items-center justify-center gap-2">
-                  <span>🧠</span> Start Quiz
+                  <span>🎯</span> Start Quiz
                 </span>
               </Button>
             ) : (
@@ -399,7 +399,7 @@ export default function QuizLobby() {
               </div>
 
               <Button variant="secondary" fullWidth size="lg" onClick={handleSoloStart} disabled={isConnecting}>
-                {isConnecting ? <span className="animate-spin">⟳</span> : <span className="flex items-center justify-center gap-2"><span>🧠</span> Solo Quiz</span>}
+                {isConnecting ? <span className="animate-spin">⟳</span> : <span className="flex items-center justify-center gap-2"><span>🎯</span> Solo Quiz</span>}
               </Button>
             </div>
           )}

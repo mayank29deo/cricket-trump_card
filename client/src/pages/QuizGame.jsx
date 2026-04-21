@@ -124,7 +124,7 @@ export default function QuizGame() {
         <div className="flex-1 flex flex-col items-center px-4 py-8">
           <div className="w-full max-w-md space-y-6">
             <div className="text-center">
-              <div className="text-6xl mb-3">{isWinner ? '🏆' : '🧠'}</div>
+              <div className="text-6xl mb-3">{isWinner ? '🏆' : '🎯'}</div>
               <h2 className={`font-rajdhani font-bold text-3xl ${isWinner ? 'text-amber-400' : 'text-white'}`}>
                 {isWinner ? 'YOU WIN!' : 'QUIZ COMPLETE'}
               </h2>
